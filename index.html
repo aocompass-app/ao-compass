@@ -251,6 +251,8 @@ hr.sep{border:none;border-top:1px solid var(--line);margin:14px 0}
 <div class="toast" id="toast" role="status"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script>
 "use strict";
 /* =========================================================================
@@ -1745,10 +1747,52 @@ function fieldAutocomplete(label,val,opts){
   f.get=()=>inp.value.trim(); f._input=inp; return f;
 }
 function fieldSchoolName(label,val){ return fieldAutocomplete(label,val,{source:SCHOOL_DB,hint:'1文字入れると候補が出ます（ひらがな可）。専門学校など一覧に無い学校はそのまま入力できます'}); }
+/* ---- 入試要項の自動整理（貼り付け/ファイル/URL → フォーム反映） ---- */
+async function runYoukouExtract(text){
+  const keys='name(大学名), faculty(学部), dept(学科), method(入試方式), capacity(募集人数), eligibility(出願資格), gpa(評定条件), english(英語資格など), entryStart(エントリー開始日 YYYY-MM-DD), deadline(出願締切日 YYYY-MM-DD), examDate(試験日 YYYY-MM-DD), resultDate(合格発表日 YYYY-MM-DD), docs(必要書類), selection(選考方法), ideal(求める人物像), policy(アドミッションポリシーの要点), notes(注意事項・不明点・複数年度や方式の別)';
+  const sys=AI_RULES+'\n入試要項のテキストから出願情報を抽出し、次のキーだけを持つJSONのみを出力してください（前後に文章やコードブロックを付けない）。キー: '+keys+'。\nルール：本文に書かれている情報だけを使う。書かれていない項目は空文字\"\"にする（推測で埋めない）。日付は具体的な日付が分かる場合のみYYYY-MM-DD。範囲・期間・不明なものはnotesに文章で書く。年度・学部・入試方式が複数ある場合はnotesにその旨を明記する。';
+  const raw=await callAI(sys,'【入試要項テキスト】\n'+text.slice(0,15000),{json:true,max:1600});
+  const j=extractJSON(raw); if(!j) throw new Error('要項をうまく解釈できませんでした。本文を整えて再度お試しください。');
+  return j;
+}
+function renderYoukou(b,j,f){
+  b.appendChild(el('div','note','🤖 AIが抽出した内容（未確認）です。反映後、<b>必ず大学公式サイトの最新要項で確認</b>してください。'));
+  const map=[['name','大学名'],['faculty','学部'],['dept','学科'],['method','入試方式'],['capacity','募集人数'],['eligibility','出願資格'],['gpa','評定条件'],['english','英語資格など'],['entryStart','エントリー開始'],['deadline','出願締切'],['examDate','試験日'],['resultDate','合格発表'],['docs','必要書類'],['selection','選考方法'],['ideal','求める人物像'],['policy','アドミッションポリシー'],['notes','注意事項']];
+  const dl=el('dl','kv'); dl.style.margin='10px 0';
+  let any=false;
+  map.forEach(([k,l])=>{ const v=j[k]; if(v&&String(v).trim()){ any=true; const dt=el('dt',null,esc(l)); const dd=el('dd'); dd.innerHTML=nl2br(String(v)); dl.append(dt,dd); } });
+  if(!any){ b.appendChild(el('p','small muted','抽出できる情報が見つかりませんでした。本文の範囲を広げて再度お試しください。')); return; }
+  b.appendChild(dl);
+  const apply=el('button','btn primary block','この内容をフォームに反映');
+  apply.onclick=()=>{
+    const set=(field,val,dateOnly)=>{ if(!field||!field._input||val==null||String(val)==='')return; if(dateOnly&&!/^\d{4}-\d{2}-\d{2}$/.test(String(val)))return; field._input.value=String(val); };
+    set(f.name,j.name); set(f.faculty,j.faculty); set(f.dept,j.dept); set(f.method,j.method); set(f.capacity,j.capacity);
+    set(f.eligibility,j.eligibility); set(f.gpa,j.gpa); set(f.english,j.english);
+    set(f.entryStart,j.entryStart,true); set(f.deadline,j.deadline,true); set(f.examDate,j.examDate,true); set(f.resultDate,j.resultDate,true);
+    set(f.docs,j.docs); set(f.selection,j.selection); set(f.ideal,j.ideal); set(f.policy,j.policy);
+    if(j.notes&&f.notes&&f.notes._input){ f.notes._input.value=(f.notes._input.value?f.notes._input.value+'\n':'')+'【AI抽出メモ（要確認）】'+j.notes; }
+    toast('フォームに反映しました。内容を確認して保存してください','ok');
+  };
+  b.appendChild(apply);
+}
+function buildYoukouPanel(c,f){
+  c.appendChild(el('p','xsmall muted','要項ページの本文を貼り付け、または要項PDF/Wordをアップロードすると、AIが日程・出願条件・提出書類・選考・注意点を整理してこのフォームに反映します。'));
+  const urlf=fieldText('要項ページのURL（任意）','',null,{type:'url',placeholder:'https://...'}); c.appendChild(urlf);
+  const row=el('div','btn-row'); const uget=el('button','btn sm','🔗 URLから取得'); const fb=el('button','btn sm','📎 要項ファイル'); row.append(uget,fb); c.appendChild(row);
+  const ta=fieldText('要項の本文（ここに貼り付け）','',null,{area:true,rows:6}); c.appendChild(ta);
+  uget.onclick=async()=>{ const u=urlf.get(); if(!u){toast('URLを入力してください','warn');return;} toast('取得中…'); try{ const r=await fetch('https://r.jina.ai/'+u); if(!r.ok)throw 0; ta._input.value=(await r.text()).slice(0,20000); toast('取得しました。内容を確認してAI整理へ','ok'); }catch(e){ toast('このURLは自動取得できませんでした。ページを開いて本文をコピペしてください','warn'); } };
+  fb.onclick=()=>pickFile('.pdf,.docx,.txt',(text)=>{ ta._input.value=text; toast('読み込みました','ok'); });
+  const run=el('button','btn primary block',aiReady()?'🤖 AIで整理してフォームに反映':'AIに接続して整理'); run.style.marginTop='8px';
+  const out=el('div');
+  run.onclick=()=>{ if(!aiReady()){ openAISettings(); return; } const text=ta.get(); if(!text||text.length<20){toast('要項の本文を貼り付けてください','warn');return;} const go=()=>{ aiLoading(out,'AIが要項を整理しています…'); runYoukouExtract(text).then(j=>{ out.innerHTML=''; renderYoukou(out,j,f); }).catch(e=>{ out.innerHTML=''; aiError(out,e,go); }); }; go(); };
+  c.append(run,out);
+}
+
 function editSchool(id){
   const s=id?S.schools.find(x=>x.id===id):{checklist:{}};
   openSheet(id?'志望校を編集':'志望校を追加',(b,close)=>{
     const f={};
+    const yd=el('details','acc'); yd.style.marginBottom='8px'; yd.innerHTML='<summary>🤖 入試要項から自動入力（貼り付け / ファイル / URL）</summary>'; const yc=el('div','acc-body'); yd.appendChild(yc); b.appendChild(yd); buildYoukouPanel(yc,f);
     f.name=fieldSchoolName('大学名 *',s.name); b.appendChild(f.name);
     const r1=el('div','row2'); f.faculty=fieldAutocomplete('学部',s.faculty,{source:FAC_DB,hint:'候補から選択・直接入力可（ひらがな可）'}); f.dept=fieldAutocomplete('学科',s.dept,{source:DEPT_DB,hint:'候補から選択・直接入力可（ひらがな可）'}); r1.append(f.faculty,f.dept); b.appendChild(r1);
     f.method=fieldAutocomplete('入試方式',s.method,{source:METHOD_DB,hint:'候補から選択・直接入力可（ひらがな可）'}); b.appendChild(f.method);
@@ -1803,14 +1847,65 @@ function vDocuments(){
   });
   return w;
 }
+/* =========================================================================
+   ファイル読み取り（PDF / Word / パワポ / テキスト）＋書類の種別
+   ========================================================================= */
+const DOC_TYPES=['志望理由書','自己推薦書','活動報告書','研究計画書','プレゼン資料','小論文','エッセイ','その他'];
+function xmlText(s){ return (s||'').replace(/<[^>]+>/g,'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;|&apos;/g,"'").replace(/&amp;/g,'&'); }
+async function extractFileText(file){
+  const name=(file.name||'').toLowerCase(); const ext=name.split('.').pop();
+  if(['txt','md','csv','text'].includes(ext)) return {text:await file.text()};
+  if(ext==='pptx') return await extractPptx(file);
+  if(ext==='docx') return await extractDocx(file);
+  if(ext==='pdf') return await extractPdf(file);
+  if(['png','jpg','jpeg','gif','webp','heic'].includes(ext)) throw new Error('画像は文字を自動で読み取れません（OCR未対応）。本文をコピーして貼り付けてください。');
+  if(['ppt','doc'].includes(ext)) throw new Error('古い形式（.'+ext+'）は未対応です。.pptx / .docx で保存し直すか、本文を貼り付けてください。');
+  try{ return {text:await file.text()}; }catch(e){ throw new Error('未対応の形式です（PDF・Word・パワポ・テキストに対応）。'); }
+}
+async function extractPptx(file){
+  if(!window.JSZip) throw new Error('読み取りライブラリを読み込めませんでした（通信環境をご確認ください）。');
+  const zip=await window.JSZip.loadAsync(file);
+  const names=Object.keys(zip.files).filter(n=>/^ppt\/slides\/slide\d+\.xml$/.test(n)).sort((a,b)=>(+a.match(/slide(\d+)/)[1])-(+b.match(/slide(\d+)/)[1]));
+  const slides=[];
+  for(const n of names){ const xml=await zip.files[n].async('string'); const texts=[...xml.matchAll(/<a:t>([\s\S]*?)<\/a:t>/g)].map(m=>xmlText(m[1])).filter(t=>t.trim()); slides.push(texts.join('\n')); }
+  if(!slides.length) throw new Error('スライドから文字を取り出せませんでした（画像中心の資料かもしれません）。');
+  const text=slides.map((s,i)=>`【スライド${i+1}】\n${s||'（文字なし）'}`).join('\n\n');
+  return {text, slides};
+}
+async function extractDocx(file){
+  if(!window.JSZip) throw new Error('読み取りライブラリを読み込めませんでした。');
+  const zip=await window.JSZip.loadAsync(file); const f=zip.files['word/document.xml']; if(!f) throw new Error('Word文書を読み取れませんでした。');
+  const xml=await f.async('string');
+  const paras=xml.split(/<\/w:p>/).map(p=>[...p.matchAll(/<w:t[^>]*>([\s\S]*?)<\/w:t>/g)].map(m=>xmlText(m[1])).join('')).filter(t=>t.trim());
+  const text=paras.join('\n'); if(!text.trim()) throw new Error('この文書から文字を取り出せませんでした。'); return {text};
+}
+async function extractPdf(file){
+  if(!window.pdfjsLib) throw new Error('PDF読み取りライブラリを読み込めませんでした（通信環境をご確認ください）。');
+  try{ window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js'; }catch(e){}
+  const buf=await file.arrayBuffer(); const pdf=await window.pdfjsLib.getDocument({data:buf}).promise;
+  const out=[]; const N=Math.min(pdf.numPages,60);
+  for(let i=1;i<=N;i++){ const page=await pdf.getPage(i); const c=await page.getTextContent(); out.push(c.items.map(it=>it.str).join(' ')); }
+  const text=out.join('\n');
+  if(text.replace(/\s/g,'').length<10) throw new Error('このPDFからは文字を取り出せませんでした（画像化・スキャンPDFの可能性）。本文を貼り付けてください。');
+  return {text};
+}
+function pickFile(accept,onText){
+  const inp=el('input'); inp.type='file'; if(accept)inp.accept=accept;
+  inp.onchange=async e=>{ const f=e.target.files[0]; if(!f) return; toast('読み取り中…');
+    try{ const r=await extractFileText(f); if(!r.text||!r.text.trim()){ toast('文字を取り出せませんでした','warn'); return; } onText(r.text,{slides:r.slides,name:f.name}); }
+    catch(err){ toast(err.message||'読み取りに失敗しました','err'); } };
+  inp.click();
+}
+
 function newDoc(){
   openSheet('書類を新規作成',(b,close)=>{
     const f={};
     f.title=fieldText('書類タイトル *',' ',null,{placeholder:'例：〇〇大学 志望理由書 第1稿'}); f.title._input.value=''; b.appendChild(f.title);
     f.school=fieldSelect('志望校',null,[{value:'',label:'—'},...S.schools.map(s=>({value:s.id,label:s.name+' '+(s.faculty||'')}))]); b.appendChild(f.school);
+    f.dtype=fieldSelect('種別',DOC_TYPES[0],DOC_TYPES); b.appendChild(f.dtype);
     f.q=fieldText('設問',' ',null,{area:true,rows:2,placeholder:'例：あなたが学びたいことと、その理由を述べてください'}); f.q._input.value=''; b.appendChild(f.q);
     f.limit=fieldText('文字数制限',' ',null,{type:'number',placeholder:'例：1200'}); f.limit._input.value=''; b.appendChild(f.limit);
-    const sv=el('button','btn primary','作成してエディターを開く'); sv.onclick=()=>{ if(!f.title.get()){toast('タイトルを入力してください','warn');return;} const d={id:uid(),schoolId:f.school.get()||null,title:f.title.get(),question:f.q.get(),charLimit:f.limit.get()?+f.limit.get():0,status:'下書き',body:'',notes:'',paragraphNotes:{},feedbacks:[],versions:[],updatedAt:Date.now()}; S.documents.push(d); save(); close(); openDocEditor(d.id); };
+    const sv=el('button','btn primary','作成してエディターを開く'); sv.onclick=()=>{ if(!f.title.get()){toast('タイトルを入力してください','warn');return;} const d={id:uid(),schoolId:f.school.get()||null,title:f.title.get(),question:f.q.get(),charLimit:f.limit.get()?+f.limit.get():0,type:f.dtype.get(),status:'下書き',body:'',notes:'',paragraphNotes:{},feedbacks:[],versions:[],updatedAt:Date.now()}; S.documents.push(d); save(); close(); openDocEditor(d.id); };
     b.appendChild(sv);
   });
 }
@@ -1831,22 +1926,24 @@ function openDocEditor(id,tab){
     function paneEdit(){
       if(d.question){ const qb=el('div','note info'); qb.innerHTML='<b>設問：</b>'+nl2br(d.question); pane.appendChild(qb); }
       const stSel=fieldSelect('ステータス',d.status,['下書き','修正中','添削待ち','完成']); stSel.get=stSel.get; stSel.querySelector('select').onchange=e=>{d.status=e.target.value;touchDoc(d);}; pane.appendChild(stSel);
+      const tySel=fieldSelect('種別',d.type||'志望理由書',DOC_TYPES); tySel.querySelector('select').onchange=e=>{d.type=e.target.value;touchDoc(d);}; pane.appendChild(tySel);
       const ta=el('textarea','input'); ta.rows=14; ta.value=d.body||''; ta.setAttribute('aria-label','本文'); ta.style.minHeight='240px'; pane.appendChild(ta);
       const cnt=el('div','counter'); pane.appendChild(cnt);
       const updateCnt=()=>{ const len=countJP(ta.value); let cls='counter'; if(d.charLimit){ if(len>d.charLimit)cls+=' over'; else if(len>d.charLimit*0.9)cls+=' near'; } cnt.className=cls; cnt.textContent=`${len}${d.charLimit?' / '+d.charLimit+'字':' 字'}`+(d.charLimit&&len>d.charLimit?`（${len-d.charLimit}字 超過）`:''); };
       updateCnt();
       ta.addEventListener('input',()=>{ updateCnt(); clearTimeout(_autosaveT); _autosaveT=setTimeout(()=>{ d.body=ta.value; d.updatedAt=Date.now(); save(); const s=el('span'); toast('自動保存しました','ok'); },700); });
       const row=el('div','btn-row'); row.style.marginTop='10px';
+      const imp=el('button','btn sm ghost','📎 ファイルから読み込む'); imp.onclick=()=>pickFile('.pdf,.docx,.pptx,.txt,.md,.csv',(text,meta)=>{ ta.value = ta.value.trim() ? (ta.value.trim()+'\n\n'+text) : text; updateCnt(); d.body=ta.value; touchDoc(d); toast('「'+(meta.name||'ファイル')+'」を読み込みました','ok'); });
       const saveV=el('button','btn sm','この内容をバージョン保存'); saveV.onclick=()=>{ d.body=ta.value; d.versions=d.versions||[]; d.versions.unshift({ts:Date.now(),body:ta.value}); touchDoc(d); toast('バージョンを保存しました','ok'); };
       const dup=el('button','btn sm ghost','この下書きを複製'); dup.onclick=()=>{ const c={...d,id:uid(),title:d.title+'（複製）',versions:[],feedbacks:(d.feedbacks||[]).map(x=>({...x})),updatedAt:Date.now(),body:ta.value}; S.documents.push(c); save(); toast('複製しました','ok'); closeSheet(); go('documents'); };
-      row.append(saveV,dup); pane.appendChild(row);
+      row.append(imp,saveV,dup); pane.appendChild(row);
       const nb=fieldText('メモ（段落メモ・自分用）',d.notes,null,{area:true,rows:2}); nb.querySelector('textarea').onchange=e=>{d.notes=e.target.value;touchDoc(d);}; pane.appendChild(nb);
     }
     function paneAI(){
       d.body=$('#overlay').querySelector('textarea')?.value||d.body; // 念のため最新
       const school=S.schools.find(s=>s.id===d.schoolId);
-      const a=analyzeText(d.body,{charLimit:d.charLimit,school,question:d.question,hasPolicy:!!(school&&school.policy),storyLinked:!!S.story.origin});
-      if(aiReady()){ const cta=el('button','btn primary block','🤖 '+aiLabel()+'で詳しく分析する'); cta.onclick=()=>analyzeAndShow(d.body,{charLimit:d.charLimit,school,question:d.question,hasPolicy:!!(school&&school.policy)},'分析結果'); pane.appendChild(cta); pane.appendChild(el('p','xsmall muted','↓ 以下は瞬時に出るオフラインの簡易チェックです。')); }
+      const a=analyzeText(d.body,{charLimit:d.charLimit,school,question:d.question,hasPolicy:!!(school&&school.policy),storyLinked:!!S.story.origin,docType:d.type});
+      if(aiReady()){ const cta=el('button','btn primary block','🤖 '+aiLabel()+'で詳しく分析する'); cta.onclick=()=>analyzeAndShow(d.body,{charLimit:d.charLimit,school,question:d.question,hasPolicy:!!(school&&school.policy),docType:d.type},'分析結果'); pane.appendChild(cta); pane.appendChild(el('p','xsmall muted','↓ 以下は瞬時に出るオフラインの簡易チェックです。')); }
       else { const cta=el('button','btn teal block','🔌 本物のAIに接続してより詳しく分析'); cta.onclick=()=>openAISettings(); pane.appendChild(cta); }
       pane.appendChild(el('div','note','🤖 <b>あなたが話していない経験は作りません。</b>指摘のヒントに沿って、あなた自身の言葉で直してください。'));
       // スコア
@@ -2389,10 +2486,13 @@ function openAISettings(){
 
 /* ---- 本物のAIによる各機能 ---- */
 async function runAnalyzeAI(text,ctx){
+  const isPres=ctx.docType==='プレゼン資料';
   const sys=AI_RULES+'\n\n出力は日本語で、次のJSONのみ（コードブロックや前置き・後置きの文章を付けない）：\n{"good":["良い点(1〜3件)"],"priorities":["最優先で直すこと(最大3件、短い見出し)"],"scores":{"具体性":0,"一貫性":0,"独自性":0,"志望校との接続":0,"論理性":0,"読みやすさ":0,"設問への適合":0,"本人らしさ":0},"findings":[{"sev":"must|important|check","title":"指摘の見出し","why":"なぜ問題か","how":"どう直すか(具体的に)","q":"本人への質問(あれば)"}]}\n各scoreは0〜100の整数。sevは、提出前に必須=must、重要=important、要確認=check。';
+  if(isPres) sys+='\nこれはプレゼン用スライド資料です（本文は【スライドn】ごとの文字）。次も重視：1スライド1メッセージか、結論・主張が先に伝わるか、文字が多すぎないか（口頭説明との役割分担）、具体例や数字があるか、話の流れに一貫性があるか、志望理由や活動との整合、想定質疑への備え。findingsでは該当スライド番号にも触れる。';
   let u='次の出願書類の文章を分析してください。\n【設問】'+(ctx.question||'（指定なし）')+'\n';
   if(ctx.charLimit)u+='【文字数制限】'+ctx.charLimit+'字（現在 '+countJP(text)+'字）\n'; else u+='【現在の文字数】'+countJP(text)+'字\n';
   if(ctx.school){ u+='【志望校】'+ctx.school.name+' '+(ctx.school.faculty||'')+' '+(ctx.school.dept||'')+'\n'; if(ctx.school.policy)u+='【アドミッションポリシー(登録資料)】'+ctx.school.policy+'\n'; if(ctx.school.ideal)u+='【大学が求める人物像(登録資料)】'+ctx.school.ideal+'\n'; }
+  if(ctx.docType)u='【書類の種別】'+ctx.docType+'\n'+u;
   u+='【本文】\n'+text;
   const raw=await callAI(sys,u,{json:true,max:2200});
   const j=extractJSON(raw); if(!j||!j.scores) throw new Error('AIの応答をうまく解釈できませんでした。もう一度お試しください。');
@@ -2496,8 +2596,10 @@ function aiAnalyze(){
     const sel=fieldSelect('志望校（任意）',S.meta.primarySchoolId,[{value:'',label:'—'},...S.schools.map(s=>({value:s.id,label:s.name}))]); b.appendChild(sel);
     const qf=fieldText('設問（任意）','',null,{area:true,rows:2}); b.appendChild(qf);
     const lf=fieldText('文字数制限（任意）','',null,{type:'number'}); b.appendChild(lf);
+    const ty=fieldSelect('種別',DOC_TYPES[0],DOC_TYPES); b.appendChild(ty);
     const ta=fieldText('本文','',null,{area:true,rows:8}); b.appendChild(ta);
-    const run=el('button','btn primary block',aiReady()?('🤖 '+aiLabel()+'で分析する'):'簡易分析（オフライン）'); run.onclick=()=>{ const text=ta.get(); if(!text){toast('本文を入力してください','warn');return;} const school=S.schools.find(s=>s.id===sel.get()); analyzeAndShow(text,{charLimit:+lf.get()||0,school,question:qf.get(),hasPolicy:!!(school&&school.policy)},'分析結果'); }; b.appendChild(run);
+    const impb=el('button','btn ghost sm block','📎 ファイル（PDF/Word/パワポ/テキスト）から読み込む'); impb.style.marginBottom='10px'; impb.onclick=()=>pickFile('.pdf,.docx,.pptx,.txt,.md,.csv',(text,meta)=>{ ta._input.value = ta.get().trim()? (ta.get().trim()+'\n\n'+text):text; toast('「'+(meta.name||'ファイル')+'」を読み込みました','ok'); }); b.appendChild(impb);
+    const run=el('button','btn primary block',aiReady()?('🤖 '+aiLabel()+'で分析する'):'簡易分析（オフライン）'); run.onclick=()=>{ const text=ta.get(); if(!text){toast('本文を入力してください','warn');return;} const school=S.schools.find(s=>s.id===sel.get()); analyzeAndShow(text,{charLimit:+lf.get()||0,school,question:qf.get(),hasPolicy:!!(school&&school.policy),docType:ty.get()},'分析結果'); }; b.appendChild(run);
     if(!aiReady()){ const c=el('button','btn ghost sm block','🔌 本物のAIに接続する');c.style.marginTop='8px';c.onclick=()=>openAISettings(); b.appendChild(c); }
   });
 }
