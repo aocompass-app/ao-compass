@@ -217,6 +217,7 @@ hr.sep{border:none;border-top:1px solid var(--line);margin:14px 0}
         <span>AO Compass<small>総合型選抜の伴走アプリ</small></span>
       </div>
       <div class="spacer"></div>
+      <button class="btn sm ghost" id="btnAuth" aria-label="アカウント" style="display:none">☁️ ログイン</button>
       <button class="btn sm ghost" id="btnMore" aria-label="データと設定">⚙️</button>
     </div>
   </header>
@@ -240,6 +241,7 @@ hr.sep{border:none;border-top:1px solid var(--line);margin:14px 0}
 <div class="overlay" id="overlay" role="dialog" aria-modal="true"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast" role="status"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 "use strict";
 /* =========================================================================
@@ -265,14 +267,85 @@ function blankState(){ return {
   story:{origin:'',problem:'',past:'',learned:'',wantLearn:'',whyUniv:'',afterEnroll:'',future:''}
 };}
 function load(){ try{const r=localStorage.getItem(LS_KEY);if(r)return Object.assign(blankState(),JSON.parse(r));}catch(e){} return blankState(); }
-function save(){ try{localStorage.setItem(LS_KEY,JSON.stringify(S));}catch(e){toast('保存に失敗しました（容量制限の可能性）','err');} }
+function save(){ try{localStorage.setItem(LS_KEY,JSON.stringify(S));}catch(e){toast('保存に失敗しました（容量制限の可能性）','err');} scheduleCloudPush(); }
 function commit(msg){ save(); if(msg)toast(msg,'ok'); render(); }
+
+/* =========================================================================
+   クラウド保存・ログイン（Supabase）— 別端末でも同じアカウントで続きから
+   ========================================================================= */
+const SB_URL='https://zamkhvvylqbvwijnkayp.supabase.co';
+const SB_ANON='sb_publishable_mZ9GCbvJvbgefBKxgF9T1w_5H4PVFjS';
+function cloudConfigured(){ return /^https?:\/\//.test(SB_URL) && typeof SB_ANON==='string' && SB_ANON.length>20; }
+let sb=null, sbUser=null, sbStatus='guest', sbSyncTimer=null;
+function initCloud(){
+  if(!cloudConfigured() || !window.supabase){ updateAuthBar(); return; }
+  try{ sb=window.supabase.createClient(SB_URL,SB_ANON); }catch(e){ return; }
+  sb.auth.getSession().then(({data})=>{ if(data&&data.session){ onAuth(data.session.user); } updateAuthBar(); });
+  sb.auth.onAuthStateChange((_e,session)=>{ if(session){ if(!sbUser||sbUser.id!==session.user.id) onAuth(session.user); } else { sbUser=null; sbStatus='guest'; } updateAuthBar(); });
+  updateAuthBar();
+}
+function onAuth(u){ sbUser=u; sbStatus='synced'; updateAuthBar(); cloudPull(); }
+async function cloudPull(){
+  if(!sb||!sbUser) return;
+  try{
+    const {data,error}=await sb.from('app_state').select('data').eq('user_id',sbUser.id).maybeSingle();
+    if(error){ sbStatus='error'; updateAuthBar(); return; }
+    if(data&&data.data){ S=Object.assign(blankState(),data.data); localStorage.setItem(LS_KEY,JSON.stringify(S)); sbStatus='synced'; render(); toast('クラウドから読み込みました','ok'); }
+    else { await cloudPush(); }
+  }catch(e){ sbStatus='error'; updateAuthBar(); }
+}
+async function cloudPush(){
+  if(!sb||!sbUser) return;
+  sbStatus='syncing'; updateAuthBar();
+  try{
+    const {error}=await sb.from('app_state').upsert({user_id:sbUser.id, data:S, updated_at:new Date().toISOString()});
+    sbStatus=error?'error':'synced';
+  }catch(e){ sbStatus='error'; }
+  updateAuthBar();
+}
+function scheduleCloudPush(){ if(!sb||!sbUser) return; sbStatus='pending'; updateAuthBar(); clearTimeout(sbSyncTimer); sbSyncTimer=setTimeout(cloudPush,1500); }
+function updateAuthBar(){
+  const b=document.getElementById('btnAuth'); if(!b) return;
+  if(!cloudConfigured()){ b.style.display='none'; return; }
+  b.style.display='';
+  if(sbUser){ const nm=(sbUser.email||'').split('@')[0]; const st=(sbStatus==='syncing'||sbStatus==='pending')?'同期中…':sbStatus==='error'?'⚠同期エラー':'同期済'; b.textContent='☁️ '+nm.slice(0,8); b.title=sbUser.email+'（'+st+'）'; }
+  else { b.textContent='☁️ ログイン'; b.title='ログイン / 新規登録'; }
+}
+function jpAuthErr(e){ const m=((e&&e.message)||'').toLowerCase(); if(m.includes('invalid login'))return 'メールアドレスかパスワードが違います。'; if(m.includes('already registered')||m.includes('already been'))return 'このメールは登録済みです。ログインしてください。'; if(m.includes('confirm'))return 'メール確認が必要です。受信メールのリンクを開いてからログインしてください。'; if(m.includes('password'))return 'パスワードは6文字以上にしてください。'; if(m.includes('rate'))return '試行が多すぎます。少し待って再度お試しください。'; return '失敗しました：'+((e&&e.message)||''); }
+function openAuthSheet(){
+  if(!cloudConfigured()){ toast('クラウド機能は準備中です','warn'); return; }
+  if(!window.supabase||!sb){ toast('接続を準備中です。少し待って再度お試しください','warn'); return; }
+  openSheet(sbUser?'アカウント':'ログイン / 新規登録',(b,close)=>{
+    if(sbUser){
+      b.appendChild(el('div','note info','ログイン中：<b>'+esc(sbUser.email)+'</b><br>入力データはこのアカウントに自動保存されます。別の端末でも同じメール・パスワードでログインすれば、続きから使えます。'));
+      const sync=el('button','btn primary block','今すぐ同期する'); sync.onclick=async()=>{ await cloudPush(); toast('同期しました','ok'); };
+      const pull=el('button','btn ghost block','クラウドから読み込み直す'); pull.style.marginTop='8px'; pull.onclick=async()=>{ await cloudPull(); close(); };
+      const out=el('button','btn danger block','ログアウト'); out.style.marginTop='8px'; out.onclick=async()=>{ await sb.auth.signOut(); sbUser=null; sbStatus='guest'; updateAuthBar(); toast('ログアウトしました','ok'); close(); };
+      b.append(sync,pull,out);
+      b.appendChild(el('p','xsmall muted','この端末のデータはログアウト後も残ります。共用PCでは「その他 → すべてのデータを削除」もご検討ください。'));
+      return;
+    }
+    b.appendChild(el('div','note info','メールアドレスとパスワードでアカウントを作ると、入力データがクラウドに保存され、<b>スマホでもPCでも同じログインで続きから</b>使えます。'));
+    const email=fieldText('メールアドレス','',null,{type:'email',placeholder:'you@example.com'});
+    const pw=fieldText('パスワード','','6文字以上',{type:'password'});
+    b.append(email,pw);
+    const msg=el('div','small'); msg.style.margin='6px 0'; b.appendChild(msg);
+    const showMsg=(t,ok)=>{ msg.textContent=t; msg.style.color=ok?'var(--ok)':'var(--alert)'; };
+    const login=el('button','btn primary block','ログイン');
+    login.onclick=async()=>{ if(!email.get()||!pw.get()){showMsg('メールとパスワードを入力してください');return;} login.disabled=true; showMsg('ログイン中…',true); try{ const {error}=await sb.auth.signInWithPassword({email:email.get(),password:pw.get()}); if(error){showMsg(jpAuthErr(error));} else { close(); toast('ログインしました','ok'); } }catch(e){ showMsg('通信に失敗しました'); } login.disabled=false; };
+    const signup=el('button','btn teal block','新規登録'); signup.style.marginTop='8px';
+    signup.onclick=async()=>{ if(!email.get()||pw.get().length<6){showMsg('メールと6文字以上のパスワードを入力してください');return;} signup.disabled=true; showMsg('登録中…',true); try{ const {data,error}=await sb.auth.signUp({email:email.get(),password:pw.get()}); if(error){showMsg(jpAuthErr(error));} else if(data.session){ close(); toast('登録してログインしました','ok'); } else { showMsg('確認メールを送りました。メール内のリンクを開いてから、ログインしてください。',true); } }catch(e){ showMsg('通信に失敗しました'); } signup.disabled=false; };
+    b.append(login,signup);
+    b.appendChild(el('p','xsmall muted','パスワードはSupabaseが安全に管理します（このアプリやAIには保存されません）。'));
+  });
+}
 
 /* ---------------- Router ---------------- */
 let view='home';
 function go(v){ view=v; window.scrollTo({top:0}); render(); }
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>go(b.dataset.tab));
 $('#btnMore').onclick=()=>go('more');
+$('#btnAuth').onclick=()=>openAuthSheet();
 
 function render(){
   document.querySelectorAll('.tab').forEach(b=>{
@@ -970,6 +1043,14 @@ function vMore(){
   tiles.forEach(([v,em,t,s])=>{ const b=el('button','menu-tile'); b.innerHTML=`<div class="em">${em}</div><b>${esc(t)}</b><span>${esc(s)}</span>`; b.onclick=()=>go(v); grid.appendChild(b); });
   w.appendChild(grid);
   w.appendChild(el('hr','sep'));
+  // アカウント（クラウド保存）
+  if(cloudConfigured()){
+    const ac2=el('div','card'); ac2.innerHTML='<div class="card-title"><span class="ic">☁️</span><h3>アカウント（クラウド保存）</h3></div>';
+    if(sbUser) ac2.appendChild(el('p','small muted','ログイン中：'+esc(sbUser.email)+'。入力データは自動でクラウド保存され、別の端末でも同じログインで続きから使えます。'));
+    else ac2.appendChild(el('p','small muted','メールとパスワードでアカウントを作ると、データがクラウドに保存され、スマホでもPCでも同じログインで続きから使えます。'));
+    const ab=el('button','btn '+(sbUser?'':'teal')+' sm',sbUser?'アカウント設定 / ログアウト':'ログイン / 新規登録'); ab.style.marginTop='8px'; ab.onclick=()=>openAuthSheet(); ac2.appendChild(ab); w.appendChild(ac2);
+    w.appendChild(el('hr','sep'));
+  }
   // AI接続
   const aic=el('div','card'); aic.innerHTML='<div class="card-title"><span class="ic">🤖</span><h3>AI接続</h3></div>';
   if(aiReady()) aic.appendChild(el('p','small muted','接続済み：'+esc(aiLabel())+'（モデル：'+esc(AICFG.model||defaultModel(AICFG.provider))+'）。各AI機能で本物のAIが応答します。'));
@@ -1501,6 +1582,7 @@ function buildOutlines(b,limit,school,acts,q){
    初期化
    ========================================================================= */
 render();
+initCloud();
 window.addEventListener('keydown',e=>{ if(e.key==='Escape'&&$('#overlay').classList.contains('open'))closeSheet(); });
 </script>
 </body>
