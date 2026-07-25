@@ -216,6 +216,9 @@ hr.sep{border:none;border-top:1px solid var(--line);margin:14px 0}
 .ac-item:hover,.ac-item.ac-active{background:var(--teal-soft)}
 .ac-item .nm{font-weight:600}
 .ac-more{padding:8px 12px;font-size:11.5px;color:var(--ink-3);text-align:center;border-top:1px solid var(--surface-2)}
+.pw-wrap{position:relative}
+.pw-toggle{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:none;background:var(--surface-2);color:var(--ink-2);border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer}
+.pw-toggle:hover{background:#e2e6eb}
 </style>
 </head>
 <body>
@@ -292,7 +295,7 @@ function initCloud(){
   if(!cloudConfigured() || !window.supabase){ updateAuthBar(); return; }
   try{ sb=window.supabase.createClient(SB_URL,SB_ANON); }catch(e){ return; }
   sb.auth.getSession().then(({data})=>{ if(data&&data.session){ onAuth(data.session.user); } updateAuthBar(); });
-  sb.auth.onAuthStateChange((_e,session)=>{ if(session){ if(!sbUser||sbUser.id!==session.user.id) onAuth(session.user); } else { sbUser=null; sbStatus='guest'; } updateAuthBar(); });
+  sb.auth.onAuthStateChange((event,session)=>{ if(event==='PASSWORD_RECOVERY'){ setTimeout(openPasswordUpdate,300); return; } if(session){ if(!sbUser||sbUser.id!==session.user.id) onAuth(session.user); } else { sbUser=null; sbStatus='guest'; } updateAuthBar(); });
   updateAuthBar();
 }
 function onAuth(u){ sbUser=u; sbStatus='synced'; updateAuthBar(); cloudPull(); }
@@ -323,6 +326,42 @@ function updateAuthBar(){
   else { b.textContent='☁️ ログイン'; b.title='ログイン / 新規登録'; }
 }
 function jpAuthErr(e){ const m=((e&&e.message)||'').toLowerCase(); if(m.includes('invalid login'))return 'メールアドレスかパスワードが違います。'; if(m.includes('already registered')||m.includes('already been'))return 'このメールは登録済みです。ログインしてください。'; if(m.includes('confirm'))return 'メール確認が必要です。受信メールのリンクを開いてからログインしてください。'; if(m.includes('password'))return 'パスワードは6文字以上にしてください。'; if(m.includes('rate'))return '試行が多すぎます。少し待って再度お試しください。'; return '失敗しました：'+((e&&e.message)||''); }
+function fieldPassword(label,hint){
+  const f=el('div','field'); const id='f'+uid();
+  f.innerHTML=`<label for="${id}">${esc(label)} ${hint?`<span class="hint">${esc(hint)}</span>`:''}</label>`;
+  const wrap=el('div','pw-wrap');
+  const inp=el('input','input'); inp.id=id; inp.type='password'; inp.autocomplete='off'; inp.style.paddingRight='58px';
+  const tog=el('button','pw-toggle','表示'); tog.type='button'; tog.setAttribute('aria-label','パスワードを表示');
+  tog.onclick=()=>{ const show=inp.type==='password'; inp.type=show?'text':'password'; tog.textContent=show?'隠す':'表示'; inp.focus(); };
+  wrap.append(inp,tog); f.appendChild(wrap); f.get=()=>inp.value; f._input=inp; return f;
+}
+function openForgot(prefill){
+  openSheet('パスワードの再設定',(b,close)=>{
+    b.appendChild(el('div','note info','登録したメールアドレスに、パスワード再設定用のリンクを送ります。メールが届いたらリンクを開き、新しいパスワードを設定してください。'));
+    const email=fieldText('メールアドレス',prefill||'',null,{type:'email',placeholder:'you@example.com'}); b.appendChild(email);
+    const msg=el('div','small'); msg.style.margin='6px 0'; b.appendChild(msg);
+    const send=el('button','btn primary block','再設定メールを送る');
+    send.onclick=async()=>{ if(!email.get()){msg.style.color='var(--alert)';msg.textContent='メールアドレスを入力してください';return;} send.disabled=true; msg.style.color='var(--ink-2)'; msg.textContent='送信中…';
+      try{ const {error}=await sb.auth.resetPasswordForEmail(email.get(),{redirectTo:location.href.split('#')[0]}); if(error){msg.style.color='var(--alert)';msg.textContent=jpAuthErr(error);} else { msg.style.color='var(--ok)'; msg.textContent='送信しました。メール（迷惑メールも確認）内のリンクを開いて、新しいパスワードを設定してください。'; } }
+      catch(e){ msg.style.color='var(--alert)'; msg.textContent='送信に失敗しました。通信環境をご確認ください。'; } send.disabled=false; };
+    b.appendChild(send);
+    b.appendChild(el('p','xsmall muted','※メールが届かない場合、登録時のメールアドレスの打ち間違いや、送信制限の可能性があります。しばらく待って再度お試しください。'));
+  });
+}
+function openPasswordUpdate(){
+  openSheet('新しいパスワードを設定',(b,close)=>{
+    b.appendChild(el('div','note info','再設定リンクから開きました。新しいパスワードを入力してください。'));
+    const pw=fieldPassword('新しいパスワード','6文字以上（表示で確認できます）'); const pw2=fieldPassword('新しいパスワード（確認）','もう一度同じものを');
+    b.append(pw,pw2);
+    const msg=el('div','small'); msg.style.margin='6px 0'; b.appendChild(msg);
+    const sv=el('button','btn primary block','パスワードを更新');
+    sv.onclick=async()=>{ if(pw.get().length<6){msg.style.color='var(--alert)';msg.textContent='6文字以上にしてください';return;} if(pw.get()!==pw2.get()){msg.style.color='var(--alert)';msg.textContent='確認用と一致しません';return;} sv.disabled=true; msg.style.color='var(--ink-2)'; msg.textContent='更新中…';
+      try{ const {error}=await sb.auth.updateUser({password:pw.get()}); if(error){msg.style.color='var(--alert)';msg.textContent=jpAuthErr(error);} else { toast('パスワードを更新しました','ok'); close(); } }
+      catch(e){ msg.style.color='var(--alert)'; msg.textContent='更新に失敗しました'; } sv.disabled=false; };
+    b.appendChild(sv);
+  });
+}
+
 function openAuthSheet(){
   if(!cloudConfigured()){ toast('クラウド機能は準備中です','warn'); return; }
   if(!window.supabase||!sb){ toast('接続を準備中です。少し待って再度お試しください','warn'); return; }
@@ -338,16 +377,18 @@ function openAuthSheet(){
     }
     b.appendChild(el('div','note info','メールアドレスとパスワードでアカウントを作ると、入力データがクラウドに保存され、<b>スマホでもPCでも同じログインで続きから</b>使えます。'));
     const email=fieldText('メールアドレス','',null,{type:'email',placeholder:'you@example.com'});
-    const pw=fieldText('パスワード','','6文字以上',{type:'password'});
-    b.append(email,pw);
+    const pw=fieldPassword('パスワード','6文字以上（「表示」で入力を確認できます）');
+    const pw2=fieldPassword('パスワード（確認）','新規登録のときは、同じパスワードをもう一度');
+    b.append(email,pw,pw2);
     const msg=el('div','small'); msg.style.margin='6px 0'; b.appendChild(msg);
     const showMsg=(t,ok)=>{ msg.textContent=t; msg.style.color=ok?'var(--ok)':'var(--alert)'; };
     const login=el('button','btn primary block','ログイン');
     login.onclick=async()=>{ if(!email.get()||!pw.get()){showMsg('メールとパスワードを入力してください');return;} login.disabled=true; showMsg('ログイン中…',true); try{ const {error}=await sb.auth.signInWithPassword({email:email.get(),password:pw.get()}); if(error){showMsg(jpAuthErr(error));} else { close(); toast('ログインしました','ok'); } }catch(e){ showMsg('通信に失敗しました'); } login.disabled=false; };
     const signup=el('button','btn teal block','新規登録'); signup.style.marginTop='8px';
-    signup.onclick=async()=>{ if(!email.get()||pw.get().length<6){showMsg('メールと6文字以上のパスワードを入力してください');return;} signup.disabled=true; showMsg('登録中…',true); try{ const {data,error}=await sb.auth.signUp({email:email.get(),password:pw.get()}); if(error){showMsg(jpAuthErr(error));} else if(data.session){ close(); toast('登録してログインしました','ok'); } else { showMsg('確認メールを送りました。メール内のリンクを開いてから、ログインしてください。',true); } }catch(e){ showMsg('通信に失敗しました'); } signup.disabled=false; };
+    signup.onclick=async()=>{ if(!email.get()||pw.get().length<6){showMsg('メールと、6文字以上のパスワードを入力してください');return;} if(!pw2.get()){showMsg('打ち間違い防止のため、パスワードを確認欄にもう一度入力してください');return;} if(pw.get()!==pw2.get()){showMsg('パスワードと確認欄が一致しません。「表示」で見比べてください');return;} signup.disabled=true; showMsg('登録中…',true); try{ const {data,error}=await sb.auth.signUp({email:email.get(),password:pw.get()}); if(error){showMsg(jpAuthErr(error));} else if(data.session){ close(); toast('登録してログインしました','ok'); } else { showMsg('確認メールを送りました。メール内のリンクを開いてから、ログインしてください。',true); } }catch(e){ showMsg('通信に失敗しました'); } signup.disabled=false; };
     b.append(login,signup);
-    b.appendChild(el('p','xsmall muted','パスワードはSupabaseが安全に管理します（このアプリやAIには保存されません）。'));
+    const forgot=el('button','btn ghost sm block','パスワードを忘れた方はこちら'); forgot.style.marginTop='8px'; forgot.onclick=()=>openForgot(email.get()); b.appendChild(forgot);
+    b.appendChild(el('p','xsmall muted','パスワードはSupabaseが安全に管理します（このアプリやAIには保存されません）。メールアドレスの打ち間違いにもご注意ください（再設定メールの宛先になります）。'));
   });
 }
 
