@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1f3b57">
+<meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
 <title>AO Compass｜総合型選抜の伴走アプリ</title>
 <style>
 :root{
@@ -89,6 +91,12 @@ a{color:var(--teal)}
 .chip.sel{background:var(--teal-soft);color:var(--teal);border-color:#bfe6e4}
 .chip.click{cursor:pointer}
 .chip.click:hover{border-color:#cfd6de}
+.chip.click:active{transform:scale(.96)}
+.chip-btn{font-family:inherit;cursor:pointer}
+.save-st{font-size:11px;font-weight:700;margin-top:5px;min-height:16px;color:var(--ink-3)}
+.save-st.dirty{color:var(--warn)}
+.save-st.ok{color:var(--ok)}
+.save-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px}
 .badge{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:3px 9px;font-size:11px;font-weight:700}
 .badge.navy{background:#e7edf3;color:var(--navy)}
 .badge.teal{background:var(--teal-soft);color:var(--teal)}
@@ -216,6 +224,25 @@ hr.sep{border:none;border-top:1px solid var(--line);margin:14px 0}
 .ac-item:hover,.ac-item.ac-active{background:var(--teal-soft)}
 .ac-item .nm{font-weight:600}
 .ac-more{padding:8px 12px;font-size:11.5px;color:var(--ink-3);text-align:center;border-top:1px solid var(--surface-2)}
+.mode-list{display:grid;gap:8px;margin-bottom:10px}
+.mode-card{display:block;width:100%;text-align:left;background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:10px 12px;cursor:pointer;font:inherit;color:inherit}
+.mode-card .mc-head{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.mode-card .mc-ic{font-size:18px}
+.mode-card .mc-desc{margin:4px 0 2px;line-height:1.5}
+.mode-card.on{border-color:var(--teal);background:var(--teal-soft);box-shadow:0 0 0 2px rgba(0,0,0,.02)}
+.mode-card.locked{opacity:.75}
+.day-cell{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 2px;border:1px solid var(--line);border-radius:10px;background:#fff;cursor:pointer;font-family:inherit}
+.day-cell .wd{font-size:10px;color:var(--ink-3)}
+.day-cell .dn{font-size:14px;font-weight:800;color:var(--navy);line-height:1}
+.day-cell .cnt{font-size:10px;font-weight:700;color:#fff;background:var(--orange);border-radius:999px;padding:0 6px;min-width:18px;text-align:center}
+.day-cell .cnt.none{background:transparent;color:var(--ink-3);font-weight:600}
+.day-cell .pin{font-size:11px}
+.day-cell.on{border-color:var(--teal);background:var(--teal-soft)}
+.day-cell.dl{border-color:var(--orange)}
+.day-cell:hover{border-color:var(--teal)}
+.ac-free{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 12px;cursor:pointer;font-size:14px;border-top:1px solid var(--surface-2);background:var(--surface-2)}
+.ac-free:hover{background:var(--teal-soft)}
+.ac-free .nm{font-weight:600;color:var(--ink-2)}
 .pw-wrap{position:relative}
 .pw-toggle{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:none;background:var(--surface-2);color:var(--ink-2);border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer}
 .pw-toggle:hover{background:#e2e6eb}
@@ -261,13 +288,15 @@ hr.sep{border:none;border-top:1px solid var(--line);margin:14px 0}
 /* =========================================================================
    AO Compass — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
+const APP_VER='2026.08.01';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_KEY='aoCompass_v1';
+const LS_VER='aoCompass_ver';
 const $=s=>document.querySelector(s);
 const el=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;};
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const esc=s=>(s==null?'':String(s)).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const nl2br=s=>esc(s).replace(/\n/g,'<br>');
-const todayISO=()=>new Date().toISOString().slice(0,10);
+const todayISO=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 function daysUntil(iso){ if(!iso) return null; const d=new Date(iso+'T00:00:00'); const t=new Date(); t.setHours(0,0,0,0); return Math.round((d-t)/86400000); }
 function fmtDate(iso){ if(!iso) return '—'; const d=new Date(iso+'T00:00:00'); return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`; }
 function countJP(s){ return (s||'').replace(/\s/g,'').length; } // 空白を除く文字数
@@ -276,11 +305,32 @@ function countJP(s){ return (s||'').replace(/\s/g,'').length; } // 空白を除�
 let S=load();
 function blankState(){ return {
   meta:{primarySchoolId:null, demoLoaded:false},
-  schools:[], activities:[], documents:[], interview:[], essays:[], tasks:[], feedback:[],
+  schools:[], activities:[], documents:[], interview:[], essays:[], tasks:[], feedback:[], certs:[],
   self:{answers:{}, tags:{strengths:[],values:[],activities:[],themes:[],future:[],episodes:[]}},
   story:{origin:'',problem:'',past:'',learned:'',wantLearn:'',whyUniv:'',afterEnroll:'',future:''}
 };}
-function load(){ try{const r=localStorage.getItem(LS_KEY);if(r)return Object.assign(blankState(),JSON.parse(r));}catch(e){} return blankState(); }
+/* 古いバージョンで保存されたデータに、新しく増えた項目を足して読み込む（データは消しません） */
+function migrate(raw){
+  const D=blankState(); if(!raw||typeof raw!=='object') return D;
+  const out=Object.assign(blankState(),raw);
+  out.meta=Object.assign({},D.meta,raw.meta||{});
+  out.self=Object.assign({},D.self,raw.self||{});
+  out.self.answers=Object.assign({},(raw.self&&raw.self.answers)||{});
+  out.self.tags=Object.assign({},D.self.tags,(raw.self&&raw.self.tags)||{});
+  Object.keys(D.self.tags).forEach(k=>{ if(!Array.isArray(out.self.tags[k])) out.self.tags[k]=[]; });
+  out.story=Object.assign({},D.story,raw.story||{});
+  ['schools','activities','documents','interview','essays','tasks','feedback','certs'].forEach(k=>{ if(!Array.isArray(out[k])) out[k]=[]; });
+  out.schools.forEach(x=>{ if(!x.checklist||typeof x.checklist!=='object') x.checklist={}; });
+  out.documents.forEach(d=>{ if(!Array.isArray(d.feedbacks))d.feedbacks=[]; if(!Array.isArray(d.versions))d.versions=[]; if(!d.paragraphNotes||typeof d.paragraphNotes!=='object')d.paragraphNotes={}; });
+  return out;
+}
+function load(){ try{const r=localStorage.getItem(LS_KEY);if(r)return migrate(JSON.parse(r));}catch(e){} return blankState(); }
+/* 更新のお知らせ（データはそのまま残ります） */
+function checkVersion(){
+  let prev=null; try{ prev=localStorage.getItem(LS_VER); }catch(e){}
+  try{ localStorage.setItem(LS_VER,APP_VER); }catch(e){}
+  if(prev&&prev!==APP_VER) setTimeout(()=>toast('アプリが最新版に更新されました（'+APP_VER+'）','ok'),900);
+}
 function save(){ try{localStorage.setItem(LS_KEY,JSON.stringify(S));}catch(e){toast('保存に失敗しました（容量制限の可能性）','err');} scheduleCloudPush(); }
 function commit(msg){ save(); if(msg)toast(msg,'ok'); render(); }
 
@@ -298,13 +348,13 @@ function initCloud(){
   sb.auth.onAuthStateChange((event,session)=>{ if(event==='PASSWORD_RECOVERY'){ setTimeout(openPasswordUpdate,300); return; } if(session){ if(!sbUser||sbUser.id!==session.user.id) onAuth(session.user); } else { sbUser=null; sbStatus='guest'; } updateAuthBar(); });
   updateAuthBar();
 }
-function onAuth(u){ sbUser=u; sbStatus='synced'; updateAuthBar(); cloudPull(); }
+function onAuth(u){ sbUser=u; sbStatus='synced'; updateAuthBar(); cloudPull(); try{ refreshEntitlement(); }catch(e){} }
 async function cloudPull(){
   if(!sb||!sbUser) return;
   try{
     const {data,error}=await sb.from('app_state').select('data').eq('user_id',sbUser.id).maybeSingle();
     if(error){ sbStatus='error'; updateAuthBar(); return; }
-    if(data&&data.data){ S=Object.assign(blankState(),data.data); localStorage.setItem(LS_KEY,JSON.stringify(S)); sbStatus='synced'; render(); toast('クラウドから読み込みました','ok'); }
+    if(data&&data.data){ S=migrate(data.data); localStorage.setItem(LS_KEY,JSON.stringify(S)); sbStatus='synced'; render(); toast('クラウドから読み込みました','ok'); }
     else { await cloudPush(); }
   }catch(e){ sbStatus='error'; updateAuthBar(); }
 }
@@ -392,9 +442,98 @@ function openAuthSheet(){
   });
 }
 
+/* =========================================================================
+   プラン（無料 / プラス）— 逆算プランの種類で課金
+   ========================================================================= */
+const BILLING={
+  enabled:true,
+  /* ↓ Stripeの「Payment Link」を作って、ここに貼り付けてください（空のままだと「準備中」と表示されます） */
+  links:{ month:'', year:'', once:'' },
+  support:''  /* 問い合わせ先メール（任意） */
+};
+const PLAN_PRODUCTS=[
+  {id:'month', name:'プラス（月額）',      price:'月額 980円',      note:'いつでも解約できます'},
+  {id:'year',  name:'プラス（年額）',      price:'年額 7,800円',    note:'月あたり650円・2ヶ月分おトク', best:true},
+  {id:'once',  name:'受験まで使い切り',    price:'買い切り 12,800円', note:'受験が終わるまでずっと使えます'}
+];
+const LS_ENT='aoCompass_ent';
+let ENT=loadEnt();
+function normEnt(j){ j=j||{}; return {plan:(j.plan==='pro'?'pro':'free'), until:j.until||null, source:j.source||'local'}; }
+function loadEnt(){ try{ const r=localStorage.getItem(LS_ENT); if(r) return normEnt(JSON.parse(r)); }catch(e){} return normEnt(null); }
+function saveEnt(e){ ENT=normEnt(e); try{ localStorage.setItem(LS_ENT,JSON.stringify(ENT)); }catch(e2){} }
+function isPro(){ if(!BILLING.enabled) return true; if(ENT.plan!=='pro') return false; if(ENT.until && ENT.until<todayISO()) return false; return true; }
+function planName(){ return isPro()?'プラス':'無料プラン'; }
+async function refreshEntitlement(){
+  if(!sb||!sbUser) return;
+  try{
+    const {data,error}=await sb.from('entitlements').select('plan,expires_at').eq('user_id',sbUser.id).maybeSingle();
+    if(error) return;                       /* テーブル未作成でも無視（無料のまま） */
+    if(data){ saveEnt({plan:data.plan,until:data.expires_at||null,source:'cloud'}); render(); }
+  }catch(e){}
+}
+async function redeemCode(code){
+  code=String(code||'').trim().toUpperCase();
+  if(!code) throw new Error('コードを入力してください。');
+  if(!sb||!sbUser) throw new Error('コードの登録にはログインが必要です。先に「ログイン / 新規登録」からログインしてください。');
+  const {data,error}=await sb.rpc('redeem_license',{p_code:code});
+  if(error) throw new Error(jpLicErr(error));
+  const row=Array.isArray(data)?data[0]:data;
+  saveEnt({plan:(row&&row.plan)||'pro', until:(row&&(row.expires_at||row.expiresAt))||null, source:'cloud'});
+  return ENT;
+}
+function jpLicErr(e){ const m=((e&&e.message)||'').toLowerCase();
+  if(m.includes('見つかり')||m.includes('not found')) return 'コードが見つかりません。大文字・小文字や記号をご確認ください。';
+  if(m.includes('使用済')||m.includes('used')) return 'このコードはすでに使われています。';
+  if(m.includes('ログイン')) return 'コードの登録にはログインが必要です。';
+  if(m.includes('function')||m.includes('does not exist')) return 'コード認証の準備がまだできていません（サーバー設定が必要です）。';
+  return 'コードを登録できませんでした：'+((e&&e.message)||''); }
+/* 有料機能のゲート。使える場合は true、使えない場合は案内を開いて false */
+function proGate(featureLabel){ if(isPro()) return true; openBillingSheet(featureLabel); return false; }
+function openBillingSheet(reason){
+  openSheet('プランについて',(b,close)=>{
+    if(reason) b.appendChild(el('div','note','<b>「'+esc(reason)+'」</b>は<b>プラス</b>の機能です。無料プランでは「🎯 総仕上げプラン（3〜4ヶ月）」がご利用いただけます。'));
+    if(isPro()){
+      const n=el('div','note ok'); n.innerHTML='✅ 現在 <b>プラス</b> をご利用中です。'+(ENT.until?'（'+fmtDate(ENT.until)+' まで）':''); b.appendChild(n);
+    }
+    const free=el('div','card tight');
+    free.innerHTML='<div class="small" style="font-weight:800;color:var(--navy)">無料プラン</div><p class="xsmall muted" style="margin:4px 0 0">自己分析・志望校管理・書類作成・面接練習・小論文・フィードバックなど、アプリの基本機能はすべて無料で使えます。逆算プランは「🎯 総仕上げプラン（3〜4ヶ月）」が使えます。</p>';
+    b.appendChild(free);
+    const pc=el('div','card');
+    pc.innerHTML='<div class="card-title"><span class="ic">✨</span><h3>プラス でできること</h3></div>';
+    [['🌱 じっくり育成プラン（1年以上前から）','出願日を前年度の日程から概算し、探究・活動・資格・評定づくりから毎週の行動に落とし込みます。'],
+     ['🔥 直前詰め込みプラン（〜6週間）','間に合わせるために、提出必須の手続きと書類の完成だけに絞って1日あたりの量を増やします。'],
+     ['🤖 AIによるプランの組み直し','登録した状況をAIが読んで、日割りをまるごと組み替えます。'],
+     ['🔄 何度でも作り直せる','進み具合が変わったら、そのつど組み直せます。']].forEach(([t,d])=>{
+      const r=el('div'); r.style.margin='8px 0 0'; r.innerHTML='<div class="small" style="font-weight:700">'+esc(t)+'</div><div class="xsmall muted">'+esc(d)+'</div>'; pc.appendChild(r);
+    });
+    b.appendChild(pc);
+    PLAN_PRODUCTS.forEach(pr=>{
+      const c=el('div','card tight');
+      c.innerHTML='<div style="display:flex;align-items:center;gap:8px"><b class="small">'+esc(pr.name)+'</b>'+(pr.best?'<span class="badge teal">おすすめ</span>':'')+'</div><div style="font-size:17px;font-weight:800;color:var(--navy);margin-top:2px">'+esc(pr.price)+'</div><div class="xsmall muted">'+esc(pr.note)+'</div>';
+      const link=(BILLING.links||{})[pr.id];
+      const btn=el('button','btn '+(pr.best?'primary':'')+' sm block', link?'このプランに申し込む':'準備中');
+      btn.style.marginTop='8px'; btn.disabled=!link;
+      btn.onclick=()=>{ if(!link) return; window.open(link,'_blank','noopener'); toast('お支払いページを開きました。完了後にアクセスコードが届きます','ok'); };
+      c.appendChild(btn); b.appendChild(c);
+    });
+    b.appendChild(el('hr','sep'));
+    const rc=el('div','card tight');
+    rc.innerHTML='<div class="card-title"><span class="ic">🔑</span><h3>アクセスコードで解除</h3></div><p class="xsmall muted">お支払い後に届いたコードを入力してください。ログインしたアカウントに紐づきます（別の端末でもそのまま使えます）。</p>';
+    const code=fieldText('アクセスコード','',null,{placeholder:'例：AOC-XXXX-XXXX'}); rc.appendChild(code);
+    const msg=el('div','small'); msg.style.margin='4px 0'; rc.appendChild(msg);
+    const go2=el('button','btn teal sm block','コードを登録する');
+    go2.onclick=async()=>{ go2.disabled=true; msg.style.color='var(--ink-2)'; msg.textContent='確認中…';
+      try{ await redeemCode(code.get()); msg.style.color='var(--ok)'; msg.textContent='解除しました。すべてのプランが使えます。'; toast('プラスが有効になりました','ok'); setTimeout(()=>{close();render();},700); }
+      catch(e){ msg.style.color='var(--alert)'; msg.textContent=(e&&e.message)||'登録できませんでした'; }
+      go2.disabled=false; };
+    rc.appendChild(go2); b.appendChild(rc);
+    b.appendChild(el('p','xsmall muted','※ お支払い・解約の手続きは決済ページ（Stripe）で行われます。'+(BILLING.support?'ご不明な点は '+esc(BILLING.support)+' までご連絡ください。':'')+'　※ 有料プランでも合否を保証するものではありません。'));
+  });
+}
+
 /* ---------------- Router ---------------- */
 let view='home';
-function go(v){ view=v; window.scrollTo({top:0}); render(); }
+function go(v){ try{ flushAutosave(); }catch(e){} view=v; window.scrollTo({top:0}); render(); }
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>go(b.dataset.tab));
 $('#btnMore').onclick=()=>go('more');
 $('#btnAuth').onclick=()=>openAuthSheet();
@@ -408,7 +547,7 @@ function render(){
   });
   const r=$('#root'); r.innerHTML='';
   const v=({home:vHome,schools:vSchools,documents:vDocuments,interview:vInterview,more:vMore,
-    self:vSelf,portfolio:vPortfolio,story:vStory,essay:vEssay,tasks:vTasks,feedback:vFeedback,ai:vAI})[view]||vHome;
+    self:vSelf,portfolio:vPortfolio,story:vStory,essay:vEssay,tasks:vTasks,feedback:vFeedback,certs:vCerts,ai:vAI})[view]||vHome;
   r.appendChild(v());
 }
 
@@ -646,12 +785,16 @@ function loadDemo(){
     {id:uid(),title:'オープンキャンパスの日程を確認する',due:mkd(-2),done:true,schoolId:s1,category:'大学研究'},
     {id:uid(),title:'活動報告書の下書きを作る',due:mkd(9),done:false,schoolId:s1,category:'書類'}
   ];
+  d.certs=[
+    {id:uid(),name:'実用英語技能検定（英検）',grade:'2級',date:'2025-06',note:'次は準1級を目標'},
+    {id:uid(),name:'日本漢字能力検定（漢検）',grade:'準2級',date:'2024-11',note:''}
+  ];
   d.feedback=[
     {id:uid(),target:'志望理由書 第2稿',from:'高校の担任',comment:'「さまざま」「色々」など抽象語が多い。あなたが実際にやったことを数字で。',todo:'第2段落を、自分の行動＋数字で書き直す',done:false,date:mkd(-5)},
     {id:uid(),target:'面接練習（志望理由）',from:'塾の講師',comment:'「実践的に学べる」の中身が説明できていない。ゼミ名や科目を1つ挙げよう。',todo:'大学の学びで具体的に触れたいものを1つ決める',done:false,date:mkd(-3)},
     {id:uid(),target:'全体',from:'保護者',comment:'応援している。無理はしないで。',todo:'',done:true,date:mkd(-7)}
   ];
-  S=d; save(); toast('デモデータを読み込みました','ok'); go('home');
+  S=d; save(); try{ applyPlan(buildPlan()); }catch(e){} toast('デモデータを読み込みました','ok'); go('home');
 }
 
 /* =========================================================================
@@ -710,6 +853,9 @@ function vHome(){
   } else { hero.innerHTML='<p class="small muted">第一志望が未設定です。志望校タブで設定できます。</p>'; }
   w.appendChild(hero);
 
+  // 今日やること（逆算プラン）
+  w.appendChild(homeTodayCard());
+
   // AIアドバイス
   const advice=homeAdvice(primary);
   const ai=el('div','card tight'); ai.innerHTML=`<div class="ai-note"><b>🤖 今日のひとこと</b><br>${advice}</div>`;
@@ -744,9 +890,45 @@ function vHome(){
   w.appendChild(grid);
 
   const start=el('button','btn primary block','▶ 今日の対策を始める'); start.style.margin='4px 0 8px'; start.style.padding='14px';
-  start.onclick=()=>{ const t=upcoming[0]; if(t){toast('今日のタスク：'+t.title,'ok');go('tasks');} else if(drafts[0]){go('documents');setTimeout(()=>openDocEditor(drafts[0].id),50);} else go('self'); };
+  start.onclick=()=>{ const t=tasksOn(todayISO()).filter(x=>!x.done)[0]||upcoming[0]; if(t){ openDaySheet(t.due||todayISO()); } else if(drafts[0]){go('documents');setTimeout(()=>openDocEditor(drafts[0].id),50);} else go('self'); };
   w.appendChild(start);
   return w;
+}
+function homeTodayCard(){
+  const today=todayISO();
+  const c=el('div','card');
+  const todays=tasksOn(today);
+  const doneN=todays.filter(t=>t.done).length;
+  const overdue=S.tasks.filter(t=>!t.done&&t.due&&t.due<today);
+  const _m=PLAN_MODES[planMode()];
+  c.innerHTML=`<div class="card-title"><span class="ic">📅</span><h3>今日やること</h3>${hasPlan()?`<span class="badge grey" title="${esc(_m.name)}（${esc(_m.sub)}）">${_m.icon} ${esc(_m.sub)}</span>`:''}${todays.length?`<span class="badge ${doneN===todays.length?'ok':'teal'}">${doneN}/${todays.length} 完了</span>`:''}</div>`;
+  if(!hasPlan()&&!todays.length){
+    c.appendChild(el('p','small muted','出願締切・書類の量・進み具合から、いつ何をやるかを自動で逆算してカレンダーに割り振ります。'));
+    const mk=el('button','btn primary block','📅 逆算プランを作る'); mk.style.marginTop='8px'; mk.onclick=openPlanSheet; c.appendChild(mk);
+    return c;
+  }
+  if(!todays.length){ c.appendChild(el('p','small muted','今日の予定はありません。前倒しで進めるなら、下の日付から選べます。')); }
+  todays.sort((a,b)=>(a.done?1:0)-(b.done?1:0)).forEach(t=>{ const box=el('div'); box.appendChild(taskRow(t,true)); if(t.why&&!t.done){ const wy=el('p','xsmall muted','💡 '+t.why); wy.style.margin='-2px 0 6px 30px'; box.appendChild(wy);} c.appendChild(box); });
+  if(overdue.length){ const o=el('div','ai-note'); o.style.marginTop='8px'; o.innerHTML=`⏰ 期限を過ぎたタスクが${overdue.length}件あります。<b>${esc(overdue[0].title)}</b> ほか。`; const ob=el('button','btn sm ghost','まとめて見る'); ob.style.marginTop='6px'; ob.onclick=()=>go('tasks'); o.appendChild(ob); c.appendChild(o); }
+  // 7日間ストリップ
+  const strip=el('div'); strip.style.cssText='display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:12px';
+  const wd=['日','月','火','水','木','金','土'];
+  for(let i=0;i<7;i++){
+    const iso=isoAdd(today,i); const dt=new Date(iso+'T00:00:00');
+    const ts=tasksOn(iso), open=ts.filter(t=>!t.done).length;
+    const dl=S.schools.some(sc=>sc.deadline===iso);
+    const cell=el('button','day-cell'+(i===0?' on':'')+(dl?' dl':''));
+    cell.innerHTML=`<span class="wd">${wd[dt.getDay()]}</span><span class="dn">${dt.getDate()}</span>`+(dl?'<span class="pin">📮</span>':(open?`<span class="cnt">${open}</span>`:'<span class="cnt none">–</span>'));
+    cell.title=ts.map(t=>t.title).join('\n')||'予定なし';
+    cell.onclick=()=>openDaySheet(iso);
+    strip.appendChild(cell);
+  }
+  c.appendChild(strip);
+  const row=el('div','btn-row'); row.style.marginTop='10px';
+  const cal=el('button','btn sm ghost','🗓 カレンダーで見る'); cal.onclick=()=>{ vTasks._v='cal'; go('tasks'); };
+  const re=el('button','btn sm ghost','🔄 プランを作り直す'); re.onclick=openPlanSheet;
+  row.append(cal,re); c.appendChild(row);
+  return c;
 }
 function homeAdvice(primary){
   const dd=primary?daysUntil(primary.deadline):null;
@@ -1769,10 +1951,18 @@ function fieldAutocomplete(label,val,opts){
   wrap.append(inp,list); f.appendChild(wrap);
   let matches=[], active=-1;
   const close=()=>{ list.style.display='none'; inp.setAttribute('aria-expanded','false'); active=-1; };
-  const draw=()=>{ list.innerHTML=''; active=-1; matches=acFilter(db,inp.value); const shown=matches.slice(0,40);
-    if(!shown.length){ close(); return; }
+  const draw=()=>{ list.innerHTML=''; active=-1; const typed=inp.value.trim(); matches=acFilter(db,inp.value); const shown=matches.slice(0,40);
+    if(!typed){ close(); return; }
     shown.forEach(s=>{ const it=el('div','ac-item'); it.setAttribute('role','option'); it.innerHTML=`<span class="nm">${esc(s.n)}</span>${s.t?`<span class="badge grey">${esc(schoolTypeLabel(s.t))}</span>`:''}`; it.onmousedown=e=>{ e.preventDefault(); inp.value=s.n; close(); inp.dispatchEvent(new Event('change')); }; list.appendChild(it); });
     if(matches.length>shown.length){ const m=el('div','ac-more',`ほか${matches.length-shown.length}件…もう少し入力すると絞り込めます`); list.appendChild(m); }
+    if(!matches.some(x=>x.n===typed)){
+      const fr=el('div','ac-free');
+      fr.innerHTML=`<span class="nm">「${esc(typed)}」をこのまま登録</span><span class="badge grey">自由入力</span>`;
+      fr.title='候補になくても、入力した名前でそのまま保存できます';
+      fr.onmousedown=e=>{ e.preventDefault(); close(); inp.dispatchEvent(new Event('change')); };
+      list.appendChild(fr);
+      if(!shown.length){ const m2=el('div','ac-more',(opts.emptyNote||'候補にありません。入力した内容でそのまま登録できます。')); list.insertBefore(m2,fr); }
+    }
     list.style.display=''; inp.setAttribute('aria-expanded','true');
   };
   inp.addEventListener('input',draw);
@@ -1835,13 +2025,14 @@ function editSchool(id){
     const f={};
     const yd=el('details','acc'); yd.style.marginBottom='8px'; yd.innerHTML='<summary>🤖 入試要項から自動入力（貼り付け / ファイル / URL）</summary>'; const yc=el('div','acc-body'); yd.appendChild(yc); b.appendChild(yd); buildYoukouPanel(yc,f);
     f.name=fieldSchoolName('大学名 *',s.name); b.appendChild(f.name);
-    const r1=el('div','row2'); f.faculty=fieldAutocomplete('学部',s.faculty,{source:FAC_DB,hint:'候補から選択・直接入力可（ひらがな可）'}); f.dept=fieldAutocomplete('学科',s.dept,{source:DEPT_DB,hint:'候補から選択・直接入力可（ひらがな可）'}); r1.append(f.faculty,f.dept); b.appendChild(r1);
-    f.method=fieldAutocomplete('入試方式',s.method,{source:METHOD_DB,hint:'候補から選択・直接入力可（ひらがな可）'}); b.appendChild(f.method);
+    const r1=el('div','row2'); f.faculty=fieldAutocomplete('学部',s.faculty,{source:FAC_DB,hint:'一覧になければそのまま入力できます（ひらがな可）'}); f.dept=fieldAutocomplete('学科',s.dept,{source:DEPT_DB,hint:'一覧になければそのまま入力できます（ひらがな可）'}); r1.append(f.faculty,f.dept); b.appendChild(r1);
+    f.method=fieldAutocomplete('入試方式',s.method,{source:METHOD_DB,hint:'一覧になければそのまま入力できます（ひらがな可）'}); b.appendChild(f.method);
     const r2=el('div','row2'); f.capacity=fieldText('募集人数',s.capacity); f.priority=fieldSelect('志望順位',s.priority||'',[{value:'',label:'—'},{value:1,label:'第1志望'},{value:2,label:'第2志望'},{value:3,label:'第3志望'},{value:4,label:'第4志望以下'}]); r2.append(f.capacity,f.priority); b.appendChild(r2);
     f.eligibility=fieldText('出願資格',s.eligibility,null,{area:true,rows:2}); b.appendChild(f.eligibility);
     const r3=el('div','row2'); f.gpa=fieldText('評定条件',s.gpa,'例：評定平均3.5以上'); f.english=fieldText('英語資格などの必要条件',s.english); r3.append(f.gpa,f.english); b.appendChild(r3);
     const r4=el('div','row2'); f.entryStart=fieldText('エントリー開始日',s.entryStart,null,{type:'date'}); f.deadline=fieldText('出願締切日',s.deadline,null,{type:'date'}); r4.append(f.entryStart,f.deadline); b.appendChild(r4);
     const r5=el('div','row2'); f.examDate=fieldText('試験日',s.examDate,null,{type:'date'}); f.resultDate=fieldText('合格発表日',s.resultDate,null,{type:'date'}); r5.append(f.examDate,f.resultDate); b.appendChild(r5);
+    f.lastDeadline=fieldText('前年度の出願締切（参考）',s.lastDeadline,'今年度の要項がまだ出ていないとき、この日付から翌年を概算して長期プランを作ります',{type:'date'}); b.appendChild(f.lastDeadline);
     f.docs=fieldText('必要書類',s.docs,null,{area:true,rows:2}); b.appendChild(f.docs);
     f.selection=fieldText('選考方法',s.selection,null,{area:true,rows:2}); b.appendChild(f.selection);
     f.ideal=fieldText('大学が求める人物像',s.ideal,null,{area:true,rows:2}); b.appendChild(f.ideal);
@@ -1852,7 +2043,7 @@ function editSchool(id){
     const savebtn=el('button','btn primary','保存'); savebtn.onclick=()=>{
       if(!f.name.get()){toast('大学名を入力してください','warn');return;}
       const obj=id?s:{id:uid(),checklist:{}};
-      Object.assign(obj,{name:f.name.get(),faculty:f.faculty.get(),dept:f.dept.get(),method:f.method.get(),capacity:f.capacity.get(),priority:f.priority.get()?+f.priority.get():null,eligibility:f.eligibility.get(),gpa:f.gpa.get(),english:f.english.get(),entryStart:f.entryStart.get(),deadline:f.deadline.get(),examDate:f.examDate.get(),resultDate:f.resultDate.get(),docs:f.docs.get(),selection:f.selection.get(),ideal:f.ideal.get(),policy:f.policy.get(),url:f.url.get(),notes:f.notes.get()});
+      Object.assign(obj,{name:f.name.get(),faculty:f.faculty.get(),dept:f.dept.get(),method:f.method.get(),capacity:f.capacity.get(),priority:f.priority.get()?+f.priority.get():null,eligibility:f.eligibility.get(),gpa:f.gpa.get(),english:f.english.get(),entryStart:f.entryStart.get(),deadline:f.deadline.get(),examDate:f.examDate.get(),resultDate:f.resultDate.get(),lastDeadline:f.lastDeadline.get(),docs:f.docs.get(),selection:f.selection.get(),ideal:f.ideal.get(),policy:f.policy.get(),url:f.url.get(),notes:f.notes.get()});
       if(!id){ S.schools.push(obj); if(!S.meta.primarySchoolId&&obj.priority===1)S.meta.primarySchoolId=obj.id; }
       close(); commit('保存しました');
     };
@@ -1946,11 +2137,48 @@ function newDoc(){
     f.dtype=fieldSelect('種別',DOC_TYPES[0],DOC_TYPES); b.appendChild(f.dtype);
     f.q=fieldText('設問',' ',null,{area:true,rows:2,placeholder:'例：あなたが学びたいことと、その理由を述べてください'}); f.q._input.value=''; b.appendChild(f.q);
     f.limit=fieldText('文字数制限',' ',null,{type:'number',placeholder:'例：1200'}); f.limit._input.value=''; b.appendChild(f.limit);
+    const impNew=el('button','btn teal sm block','📎 ファイル（PDF / Word / パワポ / テキスト）から作成'); impNew.style.margin='2px 0 8px';
+    impNew.onclick=()=>pickFile('.pdf,.docx,.pptx,.txt,.md,.csv',(text,meta)=>{ const ext=(meta.name||'').toLowerCase().split('.').pop(); const dtype=ext==='pptx'?'プレゼン資料':f.dtype.get(); const title=f.title.get()||(meta.name||'資料').replace(/\.[^.]+$/,''); const d={id:uid(),schoolId:f.school.get()||null,title:title,question:f.q.get(),charLimit:f.limit.get()?+f.limit.get():0,type:dtype,status:'下書き',body:text,sourceFile:meta.name||'',notes:'',paragraphNotes:{},feedbacks:[],versions:[],updatedAt:Date.now()}; S.documents.push(d); save(); close(); toast('「'+(meta.name||'ファイル')+'」から作成しました','ok'); openDocEditor(d.id); });
+    b.appendChild(impNew);
+    b.appendChild(el('p','xsmall muted','↑ パワポやPDFをそのまま取り込んで書類化＝AI添削できます（種別はパワポなら自動で「プレゼン資料」に）。空欄でも作成できます。'));
     const sv=el('button','btn primary','作成してエディターを開く'); sv.onclick=()=>{ if(!f.title.get()){toast('タイトルを入力してください','warn');return;} const d={id:uid(),schoolId:f.school.get()||null,title:f.title.get(),question:f.q.get(),charLimit:f.limit.get()?+f.limit.get():0,type:f.dtype.get(),status:'下書き',body:'',notes:'',paragraphNotes:{},feedbacks:[],versions:[],updatedAt:Date.now()}; S.documents.push(d); save(); close(); openDocEditor(d.id); };
     b.appendChild(sv);
   });
 }
-let _autosaveT;
+/* ---------- 自動保存（項目ごとに独立したタイマー＋保存状態の表示） ---------- */
+const _AS={};
+function _hhmm(){ const d=new Date(); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+function saveStatusEl(){ const e=el('div','save-st'); e.setAttribute('aria-live','polite'); return e; }
+function setSaveStatus(node,state){
+  if(!node) return;
+  node.className='save-st'+(state==='saved'?' ok':(state==='dirty'?' dirty':''));
+  node.textContent = state==='saved' ? ('✓ 保存しました（'+_hhmm()+'）') : (state==='dirty' ? '● 未保存の変更があります…' : '');
+}
+/* ta の内容を key ごとに自動保存する。commit(value) が実際の書き込み。 */
+function bindAutosave(ta,key,commit,statusNode,opts){
+  opts=opts||{};
+  const doSave=(silent)=>{
+    const e=_AS[key]; if(e){ clearTimeout(e.t); delete _AS[key]; }
+    commit(ta.value);
+    save();
+    setSaveStatus(statusNode,'saved');
+    if(opts.after) try{ opts.after(); }catch(x){}
+    if(!silent&&opts.toast) toast(opts.toast,'ok');
+  };
+  ta.addEventListener('input',()=>{
+    setSaveStatus(statusNode,'dirty');
+    const e=_AS[key]; if(e) clearTimeout(e.t);
+    _AS[key]={t:setTimeout(()=>doSave(true),opts.delay||700),run:()=>doSave(true)};
+  });
+  ta.addEventListener('blur',()=>{ if(_AS[key]) _AS[key].run(); });
+  return doSave;
+}
+/* 画面を移るとき・アプリを閉じるときに、待機中の保存をすべて確定させる */
+function flushAutosave(){ Object.keys(_AS).forEach(k=>{ const e=_AS[k]; if(!e)return; clearTimeout(e.t); try{ e.run(); }catch(x){} }); }
+window.addEventListener('pagehide',flushAutosave);
+window.addEventListener('beforeunload',flushAutosave);
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') flushAutosave(); });
+
 function openDocEditor(id,tab){
   const d=S.documents.find(x=>x.id===id); if(!d) return;
   openSheet(d.title,(b)=>{
@@ -1970,11 +2198,17 @@ function openDocEditor(id,tab){
       const tySel=fieldSelect('種別',d.type||'志望理由書',DOC_TYPES); tySel.querySelector('select').onchange=e=>{d.type=e.target.value;touchDoc(d);}; pane.appendChild(tySel);
       const ta=el('textarea','input'); ta.rows=14; ta.value=d.body||''; ta.setAttribute('aria-label','本文'); ta.style.minHeight='240px'; pane.appendChild(ta);
       const cnt=el('div','counter'); pane.appendChild(cnt);
+      pane.appendChild(el('p','xsmall muted','本文は直接入力のほか、下の「📎 ファイルを読み込む」でPDF・Word・パワポ(.pptx)・テキストの内容を取り込めます（パワポはスライドごとに読み取り、種別を「プレゼン資料」にするとAIがスライド構成まで添削）。'+(d.sourceFile?(' ／ 取込元：'+d.sourceFile):'')));
       const updateCnt=()=>{ const len=countJP(ta.value); let cls='counter'; if(d.charLimit){ if(len>d.charLimit)cls+=' over'; else if(len>d.charLimit*0.9)cls+=' near'; } cnt.className=cls; cnt.textContent=`${len}${d.charLimit?' / '+d.charLimit+'字':' 字'}`+(d.charLimit&&len>d.charLimit?`（${len-d.charLimit}字 超過）`:''); };
       updateCnt();
-      ta.addEventListener('input',()=>{ updateCnt(); clearTimeout(_autosaveT); _autosaveT=setTimeout(()=>{ d.body=ta.value; d.updatedAt=Date.now(); save(); const s=el('span'); toast('自動保存しました','ok'); },700); });
+      const docSt=saveStatusEl(); pane.appendChild(docSt);
+      ta.addEventListener('input',updateCnt);
+      const saveDoc=bindAutosave(ta,'doc:'+d.id,v=>{ d.body=v; d.updatedAt=Date.now(); },docSt,{delay:700});
+      const srow=el('div','btn-row'); srow.style.margin='2px 0 4px';
+      const sbtn=el('button','btn sm primary','💾 保存する'); sbtn.onclick=()=>{ saveDoc(); toast('保存しました','ok'); };
+      srow.appendChild(sbtn); pane.appendChild(srow);
       const row=el('div','btn-row'); row.style.marginTop='10px';
-      const imp=el('button','btn sm ghost','📎 ファイルから読み込む'); imp.onclick=()=>pickFile('.pdf,.docx,.pptx,.txt,.md,.csv',(text,meta)=>{ ta.value = ta.value.trim() ? (ta.value.trim()+'\n\n'+text) : text; updateCnt(); d.body=ta.value; touchDoc(d); toast('「'+(meta.name||'ファイル')+'」を読み込みました','ok'); });
+      const imp=el('button','btn sm teal','📎 ファイルを読み込む（PDF/Word/パワポ）'); imp.onclick=()=>pickFile('.pdf,.docx,.pptx,.txt,.md,.csv',(text,meta)=>{ ta.value = ta.value.trim() ? (ta.value.trim()+'\n\n'+text) : text; updateCnt(); d.body=ta.value; d.sourceFile=meta.name||d.sourceFile; touchDoc(d); toast('「'+(meta.name||'ファイル')+'」を読み込みました','ok'); });
       const saveV=el('button','btn sm','この内容をバージョン保存'); saveV.onclick=()=>{ d.body=ta.value; d.versions=d.versions||[]; d.versions.unshift({ts:Date.now(),body:ta.value}); touchDoc(d); toast('バージョンを保存しました','ok'); };
       const dup=el('button','btn sm ghost','この下書きを複製'); dup.onclick=()=>{ const c={...d,id:uid(),title:d.title+'（複製）',versions:[],feedbacks:(d.feedbacks||[]).map(x=>({...x})),updatedAt:Date.now(),body:ta.value}; S.documents.push(c); save(); toast('複製しました','ok'); closeSheet(); go('documents'); };
       row.append(imp,saveV,dup); pane.appendChild(row);
@@ -2009,7 +2243,7 @@ function openDocEditor(id,tab){
     function paneFB(){
       pane.appendChild(el('p','small muted','先生・塾・保護者から受けたコメントを記録し、対応状況を管理できます。'));
       (d.feedbacks||[]).forEach(fb=>{ const c=el('div','card tight'); c.innerHTML=`<div style="display:flex;justify-content:space-between"><b class="small">${esc(fb.from||'匿名')}</b><span class="xsmall muted">${fb.date?fmtDate(fb.date):''}</span></div><p class="small">${nl2br(fb.comment)}</p>`; const ck=el('button','btn sm '+(fb.done?'':'ghost'),fb.done?'✓ 対応済み':'未対応にする→対応済みに'); ck.onclick=()=>{fb.done=!fb.done;touchDoc(d);renderPane('fb');}; c.appendChild(ck); const del=el('button','btn sm danger','削除');del.style.marginLeft='6px';del.onclick=()=>{d.feedbacks=d.feedbacks.filter(x=>x.id!==fb.id);touchDoc(d);renderPane('fb');};c.appendChild(del); pane.appendChild(c); });
-      const addf=el('button','btn sm block','＋ フィードバックを追加'); addf.onclick=()=>{ openSheet('フィードバックを追加',(bb,cl)=>{ const from=fieldText('誰から',''); const cm=fieldText('コメント','',null,{area:true,rows:3}); const dt=fieldText('受け取った日',todayISO(),null,{type:'date'}); bb.append(from,cm,dt); const s=el('button','btn primary','保存'); s.onclick=()=>{ d.feedbacks=d.feedbacks||[]; d.feedbacks.push({id:uid(),from:from.get(),comment:cm.get(),date:dt.get(),done:false}); touchDoc(d); cl(); renderPane('fb'); }; bb.appendChild(s); }); }; pane.appendChild(addf);
+      const addf=el('button','btn sm block','＋ フィードバックを追加'); addf.onclick=()=>{ openSheet('フィードバックを追加',(bb,cl)=>{ const from=fieldText('誰から',''); const cm=fieldText('コメント','',null,{area:true,rows:3}); const dt=fieldText('受け取った日',todayISO(),null,{type:'date'}); bb.append(from,cm); bb.appendChild(voiceTools(cm._input)); bb.appendChild(dt); const s=el('button','btn primary','保存'); s.onclick=()=>{ d.feedbacks=d.feedbacks||[]; d.feedbacks.push({id:uid(),from:from.get(),comment:cm.get(),date:dt.get(),done:false}); touchDoc(d); cl(); renderPane('fb'); }; bb.appendChild(s); }); }; pane.appendChild(addf);
     }
     function paneVer(){
       pane.appendChild(el('p','small muted','「バージョン保存」で残した過去の状態を確認・復元できます。'));
@@ -2117,6 +2351,7 @@ function openInterview(id){
     trow.append(start,stop,reset); timer.appendChild(trow); b.appendChild(timer);
     // 回答
     const ans=fieldText('回答（メモ）',q.answer,'話す内容を書き出して整理しましょう',{area:true,rows:5}); b.appendChild(ans);
+    b.appendChild(voiceTools(ans._input,{note:'🎤 話した内容をそのまま文字にできます。実際に声に出して答えてから、書き言葉に直すと自然な回答になります。🎧 は録音ファイルの文字起こし（GPT／互換APIのキーが必要）。'}));
     // 自己評価
     b.appendChild(el('h4',null,'振り返り（自己評価）')); b.appendChild(el('p','xsmall muted','具体性・一貫性・簡潔さ・本人らしさの4観点で（1〜4）'));
     const evalWrap=el('div'); const axes=['具体性','一貫性','簡潔さ','本人らしさ']; q.selfEval=q.selfEval||{};
@@ -2147,6 +2382,7 @@ function vMore(){
   const tiles=[
     ['self','🧭','自己分析ワーク','経験・価値観・強みを整理'],
     ['portfolio','🏅','活動実績ポートフォリオ','活動を行動・工夫・成長で記録'],
+    ['certs','🏆','資格・検定','英検・TOEIC・漢検などを記録'],
     ['story','🧵','出願ストーリー設計','原体験から将来像まで筋を通す'],
     ['ai','🤖','AI出願書類コーチ','分析・構成案・書き換え支援'],
     ['essay','✒️','小論文対策','テーマ練習・タイマー・添削'],
@@ -2165,6 +2401,13 @@ function vMore(){
     const ab=el('button','btn '+(sbUser?'':'teal')+' sm',sbUser?'アカウント設定 / ログアウト':'ログイン / 新規登録'); ab.style.marginTop='8px'; ab.onclick=()=>openAuthSheet(); ac2.appendChild(ab); w.appendChild(ac2);
     w.appendChild(el('hr','sep'));
   }
+  // 料金プラン
+  if(BILLING.enabled){
+    const bc=el('div','card'); bc.innerHTML='<div class="card-title"><span class="ic">✨</span><h3>プラン</h3><span class="badge '+(isPro()?'ok':'grey')+'">'+esc(planName())+'</span></div>';
+    bc.appendChild(el('p','small muted',isPro()?('プラスをご利用中です。逆算プランの3種類（じっくり育成／総仕上げ／直前詰め込み）をすべて使えます。'+(ENT.until?'有効期限：'+fmtDate(ENT.until):'')):'無料プランでは「🎯 総仕上げプラン（3〜4ヶ月）」が使えます。「🌱 じっくり育成プラン（1年以上前から）」「🔥 直前詰め込みプラン」はプラスの機能です。'));
+    const bb=el('button','btn '+(isPro()?'':'teal')+' sm',isPro()?'プランの詳細を見る':'プラスを見る / コードを登録'); bb.style.marginTop='8px'; bb.onclick=()=>openBillingSheet(); bc.appendChild(bb); w.appendChild(bc);
+    w.appendChild(el('hr','sep'));
+  }
   // AI接続
   const aic=el('div','card'); aic.innerHTML='<div class="card-title"><span class="ic">🤖</span><h3>AI接続</h3></div>';
   if(aiReady()) aic.appendChild(el('p','small muted','接続済み：'+esc(aiLabel())+'（モデル：'+esc(AICFG.model||defaultModel(AICFG.provider))+'）。各AI機能で本物のAIが応答します。'));
@@ -2180,11 +2423,16 @@ function vMore(){
   const del=el('button','btn danger','すべてのデータを削除'); del.onclick=()=>confirmDelete('すべてのデータ（志望校・書類・自己分析など）を完全に削除します。取り消せません。',()=>{S=blankState();save();toast('削除しました','ok');go('home');});
   row.append(demo,exp,imp,del); dc.appendChild(row); w.appendChild(dc);
   w.appendChild(privacyNote());
+  const vc=el('div','card tight');
+  vc.innerHTML='<div class="small" style="font-weight:800;color:var(--navy)">バージョン</div><p class="xsmall muted" style="margin:4px 0 6px">現在のバージョン：<b>'+esc(APP_VER)+'</b><br>アプリを更新しても、入力したデータはこの端末に残ります。最新版が反映されないときは下のボタンを押してください。</p>';
+  const rb=el('button','btn sm block','🔄 最新版を読み込み直す');
+  rb.onclick=()=>{ try{ flushAutosave(); }catch(e){} const u=location.href.split('#')[0].split('?')[0]+'?v='+Date.now(); location.replace(u); };
+  vc.appendChild(rb); w.appendChild(vc);
   const about=el('div','card tight'); about.innerHTML='<p class="xsmall muted">AO Compass（試作版）｜総合型選抜の伴走アプリ。AIは合否を判断せず、あなたの経験や実績を捏造しません。最終的な提出内容は必ずご自身で確認し、先生・指導者にも確認してもらいましょう。デモの大学名・要項はすべて架空です。</p>'; w.appendChild(about);
   return w;
 }
 function exportData(){ const blob=new Blob([JSON.stringify(S,null,2)],{type:'application/json'}); const a=el('a'); a.href=URL.createObjectURL(blob); a.download='ao-compass-backup.json'; a.click(); toast('バックアップを書き出しました','ok'); }
-function importData(){ const inp=el('input'); inp.type='file'; inp.accept='.json'; inp.onchange=e=>{ const file=e.target.files[0]; if(!file)return; const rd=new FileReader(); rd.onload=()=>{ try{ S=Object.assign(blankState(),JSON.parse(rd.result)); save(); toast('読み込みました','ok'); go('home'); }catch(err){ toast('ファイルを読み込めませんでした','err'); } }; rd.readAsText(file); }; inp.click(); }
+function importData(){ const inp=el('input'); inp.type='file'; inp.accept='.json'; inp.onchange=e=>{ const file=e.target.files[0]; if(!file)return; const rd=new FileReader(); rd.onload=()=>{ try{ S=migrate(JSON.parse(rd.result)); save(); toast('読み込みました','ok'); go('home'); }catch(err){ toast('ファイルを読み込めませんでした','err'); } }; rd.readAsText(file); }; inp.click(); }
 
 /* =========================================================================
    自己分析ワーク
@@ -2205,13 +2453,24 @@ function vSelf(){
   w.appendChild(pageHead('自己分析ワーク','質問に答えて、自分を言葉にする'));
   w.appendChild(el('div','note info','正解はありません。思いついたことをそのまま書いてOK。あとで書類や面接の材料になります。'));
   const answered=SELF_Q.filter(q=>S.self.answers[q.id]).length; const pr=Math.round(answered/SELF_Q.length*100);
-  const pc=el('div','card tight'); pc.innerHTML=`<div class="small muted" style="display:flex;justify-content:space-between"><span>回答の進捗</span><b>${answered}/${SELF_Q.length}</b></div><div class="prog" style="margin-top:5px"><span style="width:${pr}%"></span></div>`; w.appendChild(pc);
-  SELF_Q.forEach(q=>{ const det=el('details','acc'); if(S.self.answers[q.id])det.open=false; const done=S.self.answers[q.id]?'<span class="badge ok">回答済</span>':'<span class="badge grey">未回答</span>';
-    det.innerHTML=`<summary>${done} ${esc(q.q)}</summary>`; const body=el('div','acc-body');
+  const pc=el('div','card tight');
+  const drawProg=()=>{ const a=SELF_Q.filter(q=>S.self.answers[q.id]).length; const r=Math.round(a/SELF_Q.length*100);
+    pc.innerHTML=`<div class="small muted" style="display:flex;justify-content:space-between"><span>回答の進捗</span><b>${a}/${SELF_Q.length}</b></div><div class="prog" style="margin-top:5px"><span style="width:${r}%"></span></div>`; };
+  drawProg(); w.appendChild(pc);
+  SELF_Q.forEach(q=>{ const det=el('details','acc'); if(S.self.answers[q.id])det.open=false;
+    const badge=()=>S.self.answers[q.id]?'<span class="badge ok">回答済</span>':'<span class="badge grey">未回答</span>';
+    det.innerHTML=`<summary>${badge()} ${esc(q.q)}</summary>`; const body=el('div','acc-body');
     const ta=el('textarea','input'); ta.rows=4; ta.value=S.self.answers[q.id]||''; ta.setAttribute('aria-label',q.q);
-    ta.addEventListener('input',()=>{ clearTimeout(_autosaveT); _autosaveT=setTimeout(()=>{S.self.answers[q.id]=ta.value.trim();save();},600); });
-    body.appendChild(ta); const hint=el('p','xsmall muted','💡 「いつ・どこで・あなたが何をして・どうなったか」を意識すると具体的になります。'); body.appendChild(hint); det.appendChild(body); w.appendChild(det);
+    body.appendChild(ta);
+    const st=saveStatusEl();
+    const refresh=()=>{ const sm=det.querySelector('summary'); if(sm) sm.innerHTML=badge()+' '+esc(q.q); drawProg(); };
+    const doSave=bindAutosave(ta,'self:'+q.id,v=>{ S.self.answers[q.id]=v.trim(); },st,{delay:600,after:refresh});
+    const row=el('div','save-row');
+    const sb=el('button','btn sm primary','💾 保存する'); sb.onclick=()=>{ doSave(); toast('保存しました','ok'); };
+    row.append(st,sb); body.appendChild(row);
+    body.appendChild(voiceTools(ta,{note:'🎤 思いついたことを話すだけでも書き出せます。文章にするのは後からで大丈夫です。'})); const hint=el('p','xsmall muted','💡 「いつ・どこで・あなたが何をして・どうなったか」を意識すると具体的になります。'); body.appendChild(hint); det.appendChild(body); w.appendChild(det);
   });
+  w.appendChild(el('p','xsmall muted','入力は自動で保存されます（少し手を止めた時・別の欄に移った時・タブを切り替えた時）。すぐ確定させたいときは「💾 保存する」を押してください。'));
   // 整理された結果
   w.appendChild(el('hr','sep'));
   const sc=el('div','card'); sc.innerHTML='<div class="card-title"><span class="ic">🗂️</span><h3>整理された自分（タグ）</h3></div><p class="small muted">回答から見えてきた自分を、キーワードで整理しましょう。書類・面接・ストーリーで再利用できます。</p>';
@@ -2230,15 +2489,44 @@ function tagEditor(label,arr){
   return wrap;
 }
 function suggestSelfTags(){
-  const text=Object.values(S.self.answers).join(' ');
-  openSheet('🤖 キーワード候補',(b)=>{
+  const text=Object.values(S.self.answers||{}).filter(Boolean).join(' ');
+  let target='themes';
+  openSheet('🤖 キーワード候補',(b,close)=>{
     if(!text.trim()){ b.appendChild(el('p','small muted','先に質問へ回答すると、候補を出せます。')); return; }
-    b.appendChild(el('div','note','回答文から抜き出した候補です。あてはまるものだけタップして採用してください（AIが勝手に決めません）。'));
-    const cands=(text.match(/[一-龯ァ-ヶー]{3,}/g)||[]); const freq={}; cands.forEach(w=>freq[w]=(freq[w]||0)+1);
-    const top=Object.entries(freq).filter(([w,c])=>w.length>=3).sort((a,b)=>b[1]-a[1]).slice(0,12).map(x=>x[0]);
-    if(!top.length){ b.appendChild(el('p','small muted','候補を抽出できませんでした。')); return; }
-    b.appendChild(el('p','small','「興味のあるテーマ」候補：')); const box=el('div');box.style.cssText='display:flex;flex-wrap:wrap;gap:6px';
-    top.forEach(t=>{ const c=el('span','chip click',esc(t)+' ＋'); c.onclick=()=>{ if(!S.self.tags.themes.includes(t)){S.self.tags.themes.push(t);save();toast('「興味のあるテーマ」に追加','ok');c.className='chip sel';c.textContent=esc(t)+' ✓';} }; box.appendChild(c); }); b.appendChild(box);
+    b.appendChild(el('div','note','回答文から抜き出した候補です。あてはまるものだけタップして採用してください（AIが勝手に決めません）。もう一度タップすると取り消せます。'));
+    /* どのタグに入れるか選べる */
+    const sel=fieldSelect('追加先','themes',SELF_TAGS.map(([k,l])=>({value:k,label:l})));
+    b.appendChild(sel);
+    const box=el('div'); box.style.cssText='display:flex;flex-wrap:wrap;gap:7px;margin:6px 0 10px';
+    const cur=el('div','xsmall muted'); cur.style.margin='0 0 8px';
+    /* 候補の抽出：漢字・カタカナの語 ＋ 「〜すること」などの名詞句 */
+    const cands=(text.match(/[一-龯]{2,}|[ァ-ヶー]{3,}|[A-Za-z]{4,}/g)||[]);
+    const NG=['自分','経験','活動','思う','考え','大学','高校','学校','今回','機会','以上','時間','部分','必要','一番','最後','最初','自身','人間','日本','内容','相手','結果','理由','気持'];
+    const freq={}; cands.forEach(w=>{ if(w.length<2||NG.includes(w))return; freq[w]=(freq[w]||0)+1; });
+    const top=Object.entries(freq).sort((a,b)=>(b[1]-a[1])||(b[0].length-a[0].length)).slice(0,16).map(x=>x[0]);
+    if(!top.length){ b.appendChild(el('p','small muted','候補を抽出できませんでした。回答をもう少し書き足すと候補が出ます。')); return; }
+    const list=()=>{ S.self.tags[target]=S.self.tags[target]||[]; return S.self.tags[target]; };
+    const label=()=>{ const f=SELF_TAGS.find(x=>x[0]===target); return f?f[1]:'タグ'; };
+    const drawCur=()=>{ const a=list(); cur.textContent='いまの「'+label()+'」：'+(a.length?a.join('・'):'（未登録）'); };
+    const draw=()=>{
+      box.innerHTML='';
+      top.forEach(t=>{
+        const on=list().includes(t);
+        const c=el('button','chip chip-btn click'+(on?' sel':''),esc(t)+(on?' ✓':' ＋'));
+        c.type='button';
+        c.onclick=()=>{
+          const a=list(); const i=a.indexOf(t);
+          if(i>=0){ a.splice(i,1); save(); toast('「'+label()+'」から外しました','ok'); }
+          else { a.push(t); save(); toast('「'+label()+'」に追加しました','ok'); }
+          draw(); drawCur();
+        };
+        box.appendChild(c);
+      });
+    };
+    sel.querySelector('select').onchange=e=>{ target=e.target.value; draw(); drawCur(); };
+    b.appendChild(cur); b.appendChild(box); draw(); drawCur();
+    const done=el('button','btn primary block','完了（画面に反映）'); done.onclick=()=>{ close(); render(); toast('タグを更新しました','ok'); };
+    b.appendChild(done);
   });
 }
 
@@ -2288,7 +2576,11 @@ function vStory(){
   const w=el('div','view');
   w.appendChild(pageHead('出願ストーリー設計','原体験から将来像まで、一本の筋を通す'));
   w.appendChild(el('div','note info','自己分析・活動・志望校をつなげて、出願全体の「軸」を作ります。ここが書類と面接の背骨になります。'));
-  STORY_FIELDS.forEach(([k,label,hint])=>{ const c=el('div','card tight'); c.innerHTML=`<div class="small" style="font-weight:800;color:var(--navy)">${esc(label)}</div><div class="xsmall muted" style="margin-bottom:6px">${esc(hint)}</div>`; const ta=el('textarea','input');ta.rows=2;ta.value=S.story[k]||'';ta.setAttribute('aria-label',label); ta.addEventListener('input',()=>{clearTimeout(_autosaveT);_autosaveT=setTimeout(()=>{S.story[k]=ta.value.trim();save();},600);}); c.appendChild(ta); w.appendChild(c); });
+  STORY_FIELDS.forEach(([k,label,hint])=>{ const c=el('div','card tight'); c.innerHTML=`<div class="small" style="font-weight:800;color:var(--navy)">${esc(label)}</div><div class="xsmall muted" style="margin-bottom:6px">${esc(hint)}</div>`; const ta=el('textarea','input');ta.rows=2;ta.value=S.story[k]||'';ta.setAttribute('aria-label',label); c.appendChild(ta);
+    const st=saveStatusEl(); const doSave=bindAutosave(ta,'story:'+k,v=>{ S.story[k]=v.trim(); },st,{delay:600});
+    const row=el('div','save-row'); const sb=el('button','btn sm','💾 保存'); sb.onclick=()=>{ doSave(); toast('保存しました','ok'); };
+    row.append(st,sb); c.appendChild(row); w.appendChild(c); });
+  w.appendChild(el('p','xsmall muted','入力は自動で保存されます。すぐ確定させたいときは「💾 保存」を押してください。'));
   const check=el('button','btn teal block','🤖 ストーリーのつながりを点検'); check.style.margin='4px 0 12px'; check.onclick=()=>checkStory(); w.appendChild(check);
   return w;
 }
@@ -2344,10 +2636,302 @@ function openEssay(id){
 /* =========================================================================
    タスク・締切管理
    ========================================================================= */
+/* =========================================================================
+   逆算プラン（締切・書類量・進捗から、その日にやることを自動で割り振る）
+   - ルールベースで即座に生成／AIキーがあればAIが日割りを組み直す
+   - 反映前に必ずプレビュー。手動タスクは消さない
+   ========================================================================= */
+const PLAN_CAP=3;
+const PLAN_MODES={
+  long:{id:'long',icon:'🌱',name:'じっくり育成プラン',sub:'1年以上前から',cap:2,pro:true,
+    desc:'出願まで時間がある人向け。出願日は前年度の日程から概算し、探究・活動・資格・評定など「書く中身」を育てるところから始めて、最後の数ヶ月で書類と面接を仕上げます。'},
+  mid:{id:'mid',icon:'🎯',name:'総仕上げプラン',sub:'3〜4ヶ月',cap:3,pro:false,
+    desc:'書類の完成と面接練習が中心。締切から逆算して、初稿・添削・修正・出願手続きを日割りにします。'},
+  sprint:{id:'sprint',icon:'🔥',name:'直前詰め込みプラン',sub:'〜6週間',cap:5,pro:true,
+    desc:'締切が近い人向け。提出必須の手続きと書類の完成だけに絞り、1日あたりの件数を増やして間に合わせます。'}
+};
+function planMode(){ const m=S.meta&&S.meta.planMode; return PLAN_MODES[m]?m:recommendMode(); }
+function isoAdd(iso,n){ const d=new Date(iso+'T00:00:00'); d.setDate(d.getDate()+n); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function isoBefore(iso,n){ return isoAdd(iso,-n); }
+function planSchools(){ return S.schools.filter(s=>s.deadline&&daysUntil(s.deadline)!=null&&daysUntil(s.deadline)>=0).sort((a,b)=>daysUntil(a.deadline)-daysUntil(b.deadline)); }
+/* 出願年（未設定なら、11月以降は翌年の秋を想定） */
+function examYear(){ const y=S.meta&&S.meta.examYear; if(y) return +y; const d=new Date(); return d.getMonth()>=10?d.getFullYear()+1:d.getFullYear(); }
+/* 前年度の締切が分かればその日付の翌年、なければ総合型選抜で多い「10月上旬」を概算に使う */
+function estDeadline(s){
+  const y=examYear(), base=s&&s.lastDeadline;
+  if(base&&/^\d{4}-\d{2}-\d{2}$/.test(base)) return String(y)+base.slice(4);
+  return String(y)+'-10-01';
+}
+/* 逆算の対象。長期モードでは締切未登録の志望校も概算日で対象にする */
+function planTargets(mode){
+  const out=[];
+  S.schools.forEach(s=>{
+    if(s.deadline&&daysUntil(s.deadline)!=null&&daysUntil(s.deadline)>=0) out.push({s:s,D:s.deadline,est:false});
+    else if(mode==='long'&&!s.deadline) out.push({s:s,D:estDeadline(s),est:true});
+  });
+  return out.sort((a,b)=>a.D.localeCompare(b.D));
+}
+function planHorizon(mode){ const t=planTargets(mode)[0]; return t?t.D:estDeadline(null); }
+function planIsEstimated(mode){ const t=planTargets(mode); return (!t.length)||t.every(x=>x.est); }
+function recommendMode(){
+  const real=planSchools()[0];
+  if(!real){ const dd=daysUntil(estDeadline(null)); return (dd!=null&&dd>=170)?'long':'mid'; }
+  const dd=daysUntil(real.deadline);
+  if(dd>=170) return 'long';
+  if(dd<=45) return 'sprint';
+  return 'mid';
+}
+function shortName(n){ n=String(n||''); return n.length>9?n.slice(0,9)+'…':n; }
+function docRemaining(d){ const cur=countJP(d.body||''); if(d.charLimit) return Math.max(0,d.charLimit-cur); return cur<200?800:0; }
+function selfUnanswered(){ try{ return SELF_Q.filter(q=>!(S.self.answers||{})[q.id]).length; }catch(e){ return 0; } }
+const PLAN_PRIO={'出願':1,'書類':2,'面接':3,'小論文':4,'自己分析':5,'情報収集':6,'探究':7,'資格':7,'学業':7,'振り返り':8};
+
+/* 長期モードの土台づくり（今日 〜 締切の約4ヶ月前まで、週ごとのリズム） */
+const LONG_WEEKLY=[
+  ['興味のある分野の本・記事を1つ読み、要点と自分の考えを残す','探究','志望理由の「深さ」は、この積み重ねで決まります。'],
+  ['今の活動を記録に追加する（やったこと・工夫・変化）','自己分析','あとから思い出すのは大変。その都度が一番正確です。'],
+  ['大学・学部を1つ調べ、学べる内容と先生の研究を書き出す','情報収集','比べるほど「なぜこの大学か」が具体的になります。'],
+  ['自己分析の設問を1つ選び、いまの言葉で書き足す','自己分析','同じ問いに何度も答えるほど言葉が磨かれます。'],
+  ['探究テーマで調べたことを400字にまとめる','探究','書く筋力は、短い文章の反復でつきます。'],
+  ['オープンキャンパス・説明会の日程を確認し、予定に入れる','情報収集','参加した記録はそのまま出願書類の材料になります。'],
+  ['英語資格（英検・TOEFLなど）の次の受験日を確認する','資格','スコアは出願条件になることが多く、早めが有利です。'],
+  ['次の定期テストに向けて計画を立てる','学業','評定平均はあとから取り返せません。']
+];
+function addLongFoundation(add,mode,end){
+  const T=todayISO(); const bridge=isoBefore(end,120);
+  if(bridge<=isoAdd(T,3)) return;              /* 4ヶ月を切っていれば土台フェーズは作らない */
+  add(isoAdd(T,1),'出願までの全体像を確認し、いまの立ち位置を書き出す','振り返り',null,'長期戦は「現在地」を決めるところから。');
+  add(isoAdd(T,2),'前年度の募集要項を入手し、必要書類と日程を書き出す','情報収集',null,'日程はほぼ毎年同じ時期。前年度が最良の予習です。');
+  let k=0;
+  for(let n=4;n<3000;n+=7){
+    const d=isoAdd(T,n); if(d>=bridge) break;
+    const w=LONG_WEEKLY[k%LONG_WEEKLY.length]; k++;
+    add(d,w[0],w[1],null,w[2]);
+    if(k%4===0) add(isoAdd(d,3),'この1ヶ月を振り返り、伸びた点と次の課題を1行で書く','振り返り',null,'月に一度の棚卸しが、書類のネタ帳になります。');
+    if(k%12===0) add(isoAdd(d,5),'英語資格を受験する（または申し込む）','資格',null,'出願前にスコアを確定させておきます。');
+    if(k>200) break;
+  }
+  add(isoBefore(end,150),'志望理由書に使えそうな経験を書き出し、材料を1枚にまとめる','自己分析',null,'ここから仕上げフェーズに入ります。');
+}
+
+/* ルールベースの逆算エンジン */
+function buildPlan(mode){
+  mode=PLAN_MODES[mode]?mode:planMode();
+  const M=PLAN_MODES[mode], cap=M.cap;
+  const today=todayISO(); const raw=[];
+  const add=(ideal,title,category,school,why,hard)=>{ if(!ideal) return; raw.push({ideal:ideal,title:title,category:category,schoolId:school?school.id:null,why:why||'',hard:!!hard,prio:(hard?0:(PLAN_PRIO[category]||9))}); };
+  const targets=planTargets(mode);
+  const end=planHorizon(mode);
+  if(mode==='long') addLongFoundation(add,mode,end);
+  targets.forEach(t=>{
+    const s=t.s, D=t.D, dd=daysUntil(D), cl=s.checklist||{}, sn=shortName(s.name);
+    if(dd==null||dd<0) return;
+    const at=n=>isoBefore(D,n);
+    const f=(mode==='sprint')?Math.min(1,Math.max(0.3,(dd-1)/36)):Math.min(mode==='long'?1.6:1.5,Math.max(dd,7)/45);
+    const scale=v=>Math.max(1,Math.round(v*f));
+    // --- 出願手続き（日付を動かせない作業） ---
+    if(!cl.mail) add(at(scale(2)),sn+'：出願書類を発送・提出する','出願',s,'締切当日の投函は事故のもと。2日前には発送を。',true);
+    if(!cl.web)  add(at(scale(6)),sn+'：Web出願の登録・入力を終える','出願',s,'システム混雑や入力不備の修正時間を確保。',true);
+    if(!cl.fee)  add(at(scale(6)),sn+'：検定料を支払う','出願',s,'振込の反映に数日かかる場合があります。',true);
+    if(!cl.photo)add(at(scale(20)),sn+'：証明写真を撮影する','出願',s,'撮り直し・焼き増しの余裕を見て早めに。');
+    if(!cl.gpa)  add(at(scale(28)),sn+'：調査書・推薦書を先生に依頼する','出願',s,'学校での発行に2〜3週間かかることがあります。',mode==='sprint');
+    if(!cl.eng)  add(at(scale(32)),sn+'：英語資格のスコア証明書を取り寄せる','出願',s,'発送に日数がかかります。');
+    if(!cl.req){ const reqD=at(scale(40)); add(reqD>isoAdd(today,3)?isoAdd(today,3):reqD,sn+'：募集要項を読み、必要書類を書き出す','出願',s,t.est?'日程は概算です。要項が出たら実際の日付に更新を。':'ここが逆算の起点。提出物の抜けを防ぎます。'); }
+    // --- 書類（量と進捗から必要な作業日数を計算） ---
+    let docs=S.documents.filter(d=>d.schoolId===s.id&&d.status!=='完成');
+    if(!docs.length&&!cl.doc_ao) docs=[{id:null,title:'志望理由書',type:'志望理由書',body:'',charLimit:0,status:'未着手',_virtual:true}];
+    docs.slice(0,4).forEach((d,di)=>{
+      const nm=d.title.length>12?d.title.slice(0,12)+'…':d.title;
+      const rem=docRemaining(d);
+      const sessions=Math.min(4,Math.max(1,Math.ceil(rem/(mode==='sprint'?800:500))));
+      const off=di*2;
+      if(d._virtual||!countJP(d.body||'')) add(at(scale(36)-off),nm+'：書く材料と構成（骨子）を決める','書類',s,'いきなり書かず、経験→学び→志望の順に並べる。');
+      for(let i=0;i<sessions;i++){
+        const perc=Math.round((i+1)/sessions*100);
+        add(at(scale(32)-i*2-off),nm+'：初稿を書く（'+perc+'%まで）','書類',s,(d.charLimit?('残り約'+rem+'字／'+sessions+'回に分けて書く'):'一度に完成させず分けて書く'));
+      }
+      add(at(scale(26)-off),nm+'：通して読み返し、抽象語を具体に直す','書類',s,'「頑張った」「様々な」を事実と数字に置き換える。');
+      add(at(scale(25)-off),nm+'：AI分析で具体性・一貫性をチェックする','書類',s,'指摘は自分の言葉で直す。');
+      add(at(scale(23)-off),nm+'：先生・塾に添削を依頼する','書類',s,mode==='sprint'?'時間がないので「いつまでに返してほしいか」も伝える。':'返却まで1週間ほど見込む。');
+      add(at(scale(17)-off),nm+'：添削の指摘を反映して直す','書類',s,'受けた指摘はフィードバック画面に記録。');
+      if(mode!=='sprint') add(at(scale(12)-off),nm+'：声に出して読み、字数を調整する','書類',s,'読みにくい所は文が長すぎるサイン。');
+      add(at(scale(9)-off),nm+'：最終チェックを先生に依頼する','書類',s,'提出前の最後の確認。');
+      add(at(scale(4)-off),nm+'：誤字・字数・様式を最終確認する','書類',s,'名前・受験番号・記入欄の抜けも確認。',mode==='sprint');
+    });
+    // --- 面接 ---
+    if(!cl.mensetsu){
+      add(at(scale(30)),sn+'：想定質問を10問書き出す','面接',s,'書類から聞かれそうな所を先に洗い出す。');
+      if(mode!=='sprint'){ for(let n=Math.min(scale(26),dd); n>=8; n-=7) add(at(n),sn+'：面接練習（3問・録音して振り返り）','面接',s,'週1回のペースで慣らす。'); }
+      else { for(let n=Math.min(scale(20),dd); n>=8; n-=4) add(at(n),sn+'：面接練習（3問・録音して振り返り）','面接',s,'短期間なので回数を増やして慣らす。'); }
+      [6,4,2].forEach(n=>{ if(dd>=n) add(at(n),sn+'：面接の直前練習（本番想定で通し）','面接',s,'入退室・第一声まで通しで。'); });
+    }
+    // --- 小論文 ---
+    const needEssay=(S.essays&&S.essays.length)||/小論文|論述|作文/.test(String(s.selection||'')+String(s.docs||''));
+    if(needEssay){ const step=(mode==='sprint')?6:10; for(let n=Math.min(scale(35),dd); n>=5; n-=step) add(at(n),sn+'：小論文を1本書いて時間を計る','小論文',s,'本番と同じ字数・時間で。'); }
+  });
+  // --- 全体（志望校によらない土台づくり）。直前モードでは省く ---
+  const nearest=targets[0];
+  if(nearest&&mode!=='sprint'){
+    const dd0=daysUntil(nearest.D);
+    const T0=today;
+    const soon=n=>{ const d=isoAdd(T0,n); return d<nearest.D?d:isoAdd(T0,1); };
+    const un=selfUnanswered();
+    if(un>0){ add(soon(1),'自己分析の設問に答える（残り'+un+'問）','自己分析',null,'書類のネタはここから出ます。'); if(un>4) add(soon(4),'自己分析のつづき（残りの設問を埋める）','自己分析',null,'1日3問ずつでも進みます。'); }
+    if(!(S.activities&&S.activities.length)) add(soon(2),'活動をポートフォリオに登録する','自己分析',null,'自分が何をして何が変わったかを記録。');
+    if(!(S.story&&S.story.origin)) add(soon(5),'原体験から将来像までのストーリーを整理する','自己分析',null,'一本の筋が通ると書類も面接もぶれません。');
+    if(mode==='mid'){ for(let n=7;n<Math.max(0,dd0-25);n+=14) add(soon(n),shortName(nearest.s.name)+'：公式サイト・説明会情報を確認する','情報収集',nearest.s,'変更点や追加資料の告知を見落とさない。'); }
+  }
+  // --- 日付の正規化：過去は今日以降へ詰め、1日あたりの件数を分散 ---
+  raw.sort((a,b)=>a.ideal.localeCompare(b.ideal)||a.prio-b.prio);
+  const perDay={}; const seen=new Set(); const items=[];
+  raw.forEach(it=>{
+    let d=it.ideal<today?today:it.ideal;
+    const limit=(()=>{ const t=targets.find(x=>x.s.id===it.schoolId); return t?t.D:isoAdd(it.ideal,21); })();
+    if(!it.hard){ let g=0; while((perDay[d]||0)>=cap&&d<limit&&g<60){ d=isoAdd(d,1); g++; } }
+    if(!it.hard&&(perDay[d]||0)>=cap+2) return;   /* 溢れる分は諦める（詰め込みすぎない） */
+    const key=it.title+'@'+d; if(seen.has(key)) return; seen.add(key);
+    perDay[d]=(perDay[d]||0)+1;
+    items.push({date:d,title:it.title,category:it.category,schoolId:it.schoolId,why:it.why});
+    });
+  items.sort((a,b)=>a.date.localeCompare(b.date));
+  return items.slice(0,mode==='long'?260:120);
+}
+
+/* AIに日割りを組み直してもらう（登録情報のみを根拠にする） */
+function planContext(){
+  const L=[]; L.push('【今日】'+todayISO());
+  planSchools().forEach(s=>{
+    const cl=s.checklist||{}; const labels={req:'募集要項の確認',gpa:'調査書・評定',doc_ao:'志望理由書',doc_katsu:'活動報告書',eng:'英語資格',photo:'証明写真',web:'Web出願登録',fee:'検定料',mail:'郵送・提出',mensetsu:'面接練習'};
+    const todo=Object.keys(labels).filter(k=>!cl[k]).map(k=>labels[k]);
+    L.push(`【志望校】${s.name} ${s.faculty||''} ${s.dept||''} ／方式:${s.method||'—'} ／出願締切:${s.deadline}（あと${daysUntil(s.deadline)}日）／未完了:${todo.join('・')||'なし'}／選考:${(s.selection||'—').slice(0,80)}／必要書類:${(s.docs||'—').slice(0,120)}`);
+  });
+  S.documents.forEach(d=>{ L.push(`【書類】${d.title}（${d.type||'—'}）状態:${d.status}／現在${countJP(d.body||'')}字${d.charLimit?'／上限'+d.charLimit+'字':''}／志望校:${schoolName(d.schoolId)||'未設定'}`); });
+  const iv=S.interview||[]; L.push(`【面接】登録質問${iv.length}問／未回答${iv.filter(q=>!q.answer).length}問／苦手${iv.filter(q=>q.weak).length}問`);
+  L.push(`【小論文】練習${(S.essays||[]).length}本`);
+  L.push(`【自己分析】未回答${selfUnanswered()}問／ストーリー${(S.story&&S.story.origin)?'記入あり':'未記入'}／活動${(S.activities||[]).length}件`);
+  const manual=S.tasks.filter(t=>!t.auto&&!t.done).slice(0,20);
+  if(manual.length) L.push('【自分で登録済みのタスク（重複させない）】'+manual.map(t=>(t.due||'期限なし')+' '+t.title).join(' / '));
+  return L.join('\n');
+}
+async function runPlanAI(){
+  const mode=planMode(); const tg=planTargets(mode); const last=tg.length?tg[tg.length-1]:null;
+  const MM=PLAN_MODES[mode];
+  const sys=AI_RULES+'\n\nあなたは出願までの学習計画を設計します。登録された締切・書類の進み具合から逆算し、日付ごとの行動をJSONだけで出力してください（前後に文章やコードブロックを付けない）。'
+   +'\n形式：{"plan":[{"date":"YYYY-MM-DD","title":"その日にやること","category":"書類|面接|小論文|出願|自己分析","school":"志望校名または空文字","why":"30字以内の理由"}]}'
+   +'\nルール：'
+   +'\n・日付は今日以降、各志望校の出願締切以前にする。締切日そのものに作業を置かない。'
+   +'\n・毎日詰め込まず、休みの日を作る。合計は120件まで。'
+   +'\n・郵送・Web出願・検定料は締切の2〜6日前までに終える配置にする。調査書・推薦書の依頼は3〜4週間前。'
+   +'\n・登録されている志望校名・書類名だけを使う。存在しない大学・書類・イベントを作らない。'
+   +'\n・titleは25字以内で、その日に何をするかが分かる具体的な行動にする（「頑張る」のような曖昧な表現は不可）。'
+   +'\n・締切が近く時間が足りない場合は、量を増やすのではなく優先順位の高いものだけを残す。'
+   +'\n・今回のプランの方針：「'+MM.name+'（'+MM.sub+'）」— '+MM.desc+' 1日あたりの上限は'+MM.cap+'件。';
+  const raw=await callAI(sys,planContext(),{json:true,max:3000});
+  const j=extractJSON(raw); const arr=(j&&(j.plan||j.items||j.tasks))||(Array.isArray(j)?j:null);
+  if(!arr||!arr.length) throw new Error('プランをうまく作れませんでした。もう一度お試しください。');
+  const today=todayISO(); const maxDate=last?last.D:isoAdd(today,180);
+  const out=[];
+  arr.forEach(x=>{
+    const date=String(x.date||'').slice(0,10); const title=String(x.title||'').trim();
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!title) return;
+    if(date<today||date>maxDate) return;
+    const sc=S.schools.find(s=>x.school&&s.name.indexOf(String(x.school).replace(/（.*?）/g,''))>=0);
+    out.push({date,title:title.slice(0,60),category:String(x.category||'').slice(0,8),schoolId:sc?sc.id:null,why:String(x.why||'').slice(0,60)});
+  });
+  if(!out.length) throw new Error('日付が正しく作れませんでした。ルールベースのプランをご利用ください。');
+  out.sort((a,b)=>a.date.localeCompare(b.date));
+  return out.slice(0,90);
+}
+function applyPlan(items,mode){
+  S.tasks=S.tasks.filter(t=>!(t.auto&&!t.done));
+  if(mode) S.meta.planMode=mode;
+  items.forEach(it=>S.tasks.push({id:uid(),title:it.title,due:it.date,category:it.category||'',schoolId:it.schoolId||null,why:it.why||'',auto:true,done:false}));
+  S.meta.planAt=Date.now(); save();
+}
+function hasPlan(){ return S.tasks.some(t=>t.auto); }
+function tasksOn(iso){ return S.tasks.filter(t=>t.due===iso); }
+function openDaySheet(iso){
+  openSheet(fmtDate(iso)+' のプラン',(b)=>{
+    const ts=tasksOn(iso);
+    const dls=S.schools.filter(s=>s.deadline===iso);
+    dls.forEach(s=>{ const n=el('div','note'); n.innerHTML='📮 <b>'+esc(s.name)+' の出願締切</b>です。'; b.appendChild(n); });
+    if(!ts.length){ b.appendChild(el('p','small muted','この日に予定はありません。')); }
+    ts.forEach(t=>{ const c=el('div','card tight'); c.appendChild(taskRow(t,false)); if(t.why){ const w=el('p','xsmall muted','💡 '+t.why); w.style.margin='2px 0 0 30px'; c.appendChild(w);} b.appendChild(c); });
+    const addb=el('button','btn sm block','＋ この日にタスクを追加'); addb.style.marginTop='8px';
+    addb.onclick=()=>{ closeSheet(); setTimeout(()=>{ editTask(null); setTimeout(()=>{ const inp=document.querySelector('#sheet input[type=date]'); if(inp)inp.value=iso; },80); },120); };
+    b.appendChild(addb);
+  });
+}
+function planModeCard(id,cur,onPick){
+  const M=PLAN_MODES[id], rec=recommendMode(), locked=M.pro&&!isPro();
+  const c=el('button','mode-card'+(cur===id?' on':'')+(locked?' locked':''));
+  c.innerHTML=`<div class="mc-head"><span class="mc-ic">${M.icon}</span><b>${esc(M.name)}</b>`
+    +`<span class="badge grey">${esc(M.sub)}</span>`
+    +(rec===id?'<span class="badge teal">おすすめ</span>':'')
+    +(locked?'<span class="badge warn">🔒 プラス</span>':'')
+    +`</div><div class="xsmall muted mc-desc">${esc(M.desc)}</div>`
+    +`<div class="xsmall muted">1日あたり最大 ${M.cap} 件</div>`;
+  c.onclick=()=>{ if(locked){ openBillingSheet(M.name); return; } onPick(id); };
+  return c;
+}
+function openPlanSheet(){
+  openSheet('📅 逆算プランを作る',(b,close)=>{
+    let mode=planMode(); if(PLAN_MODES[mode].pro&&!isPro()) mode='mid';
+    if(!S.schools.length){
+      b.appendChild(el('div','note','志望校がまだ登録されていません。志望校を登録すると、その締切から逆算できます。<br>※「🌱 じっくり育成プラン」は、志望校が決まっていなくても<b>出願予定の年</b>から概算で計画を作れます。'));
+      const g=el('button','btn primary block','志望校を登録する'); g.onclick=()=>{close();go('schools');}; b.appendChild(g);
+      if(!isPro()){ const u=el('button','btn teal block','🌱 じっくり育成プランについて見る'); u.style.marginTop='8px'; u.onclick=()=>{close();openBillingSheet('じっくり育成プラン');}; b.appendChild(u); return; }
+    }
+    const picker=el('div','mode-list'); b.appendChild(picker);
+    const yearBox=el('div'); b.appendChild(yearBox);
+    b.appendChild(el('div','note','登録した<b>出願締切・書類の量と進み具合・チェックリストの未完了</b>から逆算して、日付ごとの行動に割り振ります。反映すると、これまでの自動プランのうち<b>未完了のものだけ</b>が新しい内容に置き換わります。自分で作ったタスクと完了済みの記録はそのまま残ります。'));
+    const body=el('div'); b.appendChild(body);
+    const foot=el('div','btn-row'); foot.style.marginTop='10px'; b.appendChild(foot);
+    let items=[];
+    const drawPicker=()=>{
+      picker.innerHTML='';
+      ['long','mid','sprint'].forEach(id=>picker.appendChild(planModeCard(id,mode,pick=>{ mode=pick; drawPicker(); drawYear(); gen(false); })));
+    };
+    const drawYear=()=>{
+      yearBox.innerHTML='';
+      if(mode!=='long'||!planIsEstimated('long')) return;
+      const y=examYear(); const opts=[]; const now=new Date().getFullYear();
+      for(let k=0;k<3;k++) opts.push({value:now+k,label:(now+k)+'年の秋に出願（'+(now+k+1)+'年4月入学）'});
+      const f=fieldSelect('出願する予定の年',String(y),opts);
+      f._sel=f.querySelector('select'); if(f._sel) f._sel.onchange=()=>{ S.meta.examYear=+f.get(); save(); gen(false); };
+      yearBox.appendChild(f);
+      yearBox.appendChild(el('p','xsmall muted','※ 出願日は前年度の一般的な日程（10月上旬）をもとにした<b>概算</b>です。募集要項が発表されたら、志望校の「出願締切日」を入れて作り直してください。'));
+    };
+    const draw=()=>{
+      body.innerHTML='';
+      const days=[...new Set(items.map(i=>i.date))];
+      const head=el('div','card tight'); head.innerHTML=`<b class="small">${PLAN_MODES[mode].icon} 全${items.length}件・${days.length}日分</b><div class="xsmall muted">${days.length?fmtDate(days[0])+' 〜 '+fmtDate(days[days.length-1]):''}</div>`; body.appendChild(head);
+      const list=el('div');
+      days.slice(0,10).forEach(d=>{ const c=el('div','card tight'); const dd=daysUntil(d); c.innerHTML=`<div class="small" style="font-weight:700;color:var(--navy)">${fmtDate(d)} <span class="xsmall muted">${dd===0?'今日':'あと'+dd+'日'}</span></div>`; items.filter(i=>i.date===d).forEach(i=>{ const r=el('div','xsmall'); r.style.margin='4px 0 0'; r.innerHTML=`・${esc(i.title)}${i.category?` <span class="badge grey">${esc(i.category)}</span>`:''}${i.why?`<div class="xsmall muted" style="margin-left:10px">💡${esc(i.why)}</div>`:''}`; c.appendChild(r); }); list.appendChild(c); });
+      if(days.length>10){ const more=el('details','acc'); more.innerHTML='<summary>これ以降の'+(days.length-10)+'日分を見る</summary>'; const mb=el('div','acc-body'); days.slice(10).forEach(d=>{ const p=el('p','xsmall'); p.innerHTML=`<b>${fmtDate(d)}</b>：`+items.filter(i=>i.date===d).map(i=>esc(i.title)).join(' / '); mb.appendChild(p); }); more.appendChild(mb); list.appendChild(more); }
+      body.appendChild(list);
+    };
+    const gen=(useAI)=>{
+      if(!useAI){ items=buildPlan(mode); draw(); return; }
+      body.innerHTML=''; aiLoading(body,'AIが日割りを組み立てています…');
+      runPlanAI().then(r=>{ items=r; draw(); toast('AIがプランを作りました','ok'); }).catch(e=>{ items=buildPlan(mode); draw(); toast((e&&e.message)||'AIでの作成に失敗したため、通常のプランを表示しました','warn'); });
+    };
+    const apply=el('button','btn primary','この内容をカレンダーに反映');
+    apply.onclick=()=>{ if(!items.length){toast('プランがありません','warn');return;} applyPlan(items,mode); close(); toast(items.length+'件をカレンダーに反映しました','ok'); go('home'); };
+    foot.appendChild(apply);
+    const again=el('button','btn sm','作り直す'); again.onclick=()=>gen(false); foot.appendChild(again);
+    if(aiReady()){ const aib=el('button','btn sm teal','🤖 '+aiLabel()+'に組み直してもらう'); aib.onclick=()=>{ if(!proGate('AIによるプランの組み直し')) return; gen(true); }; foot.appendChild(aib); }
+    b.appendChild(el('p','xsmall muted','※ 目安の計画です。学校行事・模試・部活の予定に合わせて、日付はいつでも編集・削除できます。締切や必要書類は必ず大学公式の最新要項で確認してください。'));
+    drawPicker(); drawYear(); gen(false);
+  });
+}
 function vTasks(){
   const w=el('div','view');
   const add=el('button','btn primary sm','＋ タスク'); add.onclick=()=>editTask(null);
   w.appendChild(pageHead('タスク・締切管理','締切から逆算して準備',add));
+  const planRow=el('div','btn-row'); planRow.style.margin='0 0 10px';
+  const _pm=PLAN_MODES[planMode()];
+  const planB=el('button','btn teal block',(hasPlan()?'🔄 逆算プランを作り直す（'+_pm.icon+' '+_pm.name+'）':'📅 逆算プランを作る（締切から自動で日割り）')); planB.onclick=openPlanSheet; planRow.appendChild(planB); w.appendChild(planRow);
   const seg=el('div','seg'); seg.style.marginBottom='12px'; vTasks._v=vTasks._v||'list';
   [['list','一覧'],['cal','カレンダー']].forEach(([k,l])=>{const b=el('button',null,l);if(vTasks._v===k)b.classList.add('on');b.onclick=()=>{vTasks._v=k;render();};seg.appendChild(b);}); w.appendChild(seg);
   if(vTasks._v==='cal'){ w.appendChild(taskCalendar()); return w; }
@@ -2371,14 +2955,35 @@ function taskRow(t,compact){
 }
 function taskCalendar(){
   const wrap=el('div');
-  const now=new Date(); const y=now.getFullYear(),m=now.getMonth();
+  const now=new Date(); taskCalendar._off=taskCalendar._off||0;
+  const base=new Date(now.getFullYear(),now.getMonth()+taskCalendar._off,1);
+  const y=base.getFullYear(),m=base.getMonth();
   const first=new Date(y,m,1); const start=first.getDay(); const days=new Date(y,m+1,0).getDate();
-  const head=el('div','card tight'); head.innerHTML=`<h4 style="text-align:center">${y}年${m+1}月</h4>`;
+  const head=el('div','card tight');
+  const nav=el('div'); nav.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:8px';
+  const prev=el('button','btn sm ghost','‹ 前の月'); prev.onclick=()=>{taskCalendar._off--;render();};
+  const next=el('button','btn sm ghost','次の月 ›'); next.onclick=()=>{taskCalendar._off++;render();};
+  const ttl=el('h4',null,`${y}年${m+1}月`); ttl.style.margin='0';
+  nav.append(prev,ttl,next); head.appendChild(nav);
   const grid=el('div'); grid.style.cssText='display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-top:8px';
   ['日','月','火','水','木','金','土'].forEach(d=>{const c=el('div','xsmall muted');c.style.textAlign='center';c.textContent=d;grid.appendChild(c);});
   for(let i=0;i<start;i++)grid.appendChild(el('div'));
-  for(let d=1;d<=days;d++){ const iso=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; const dayTasks=S.tasks.filter(t=>t.due===iso&&!t.done); const cell=el('div'); cell.style.cssText='aspect-ratio:1;border:1px solid var(--line);border-radius:8px;padding:3px;font-size:11px;position:relative;'+(iso===todayISO()?'background:var(--teal-soft);border-color:var(--teal)':''); cell.innerHTML=`<div style="font-weight:700">${d}</div>`; if(dayTasks.length){ const dot=el('div');dot.style.cssText='position:absolute;bottom:3px;left:3px;right:3px;background:var(--orange);color:#fff;border-radius:5px;font-size:9px;padding:1px 2px;text-align:center;font-weight:700';dot.textContent=dayTasks.length+'件';dot.title=dayTasks.map(t=>t.title).join('\n');cell.appendChild(dot);cell.style.cursor='pointer';cell.onclick=()=>{openSheet(fmtDate(iso),(b)=>{dayTasks.forEach(t=>b.appendChild(taskRow(t,false)));});}; } grid.appendChild(cell); }
-  head.appendChild(grid); wrap.appendChild(head);
+  for(let d=1;d<=days;d++){
+    const iso=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const all=S.tasks.filter(t=>t.due===iso); const dayTasks=all.filter(t=>!t.done);
+    const isDl=S.schools.filter(sc=>sc.deadline===iso);
+    const cell=el('div');
+    cell.style.cssText='min-height:62px;border:1px solid var(--line);border-radius:8px;padding:3px;font-size:11px;position:relative;overflow:hidden;cursor:pointer;'+(iso===todayISO()?'background:var(--teal-soft);border-color:var(--teal);':'')+(isDl.length?'border-color:var(--orange);':'');
+    cell.innerHTML=`<div style="font-weight:700">${d}${isDl.length?' <span style="color:var(--orange)">📮</span>':''}${all.length&&!dayTasks.length?' <span style="color:var(--ok)">✓</span>':''}</div>`;
+    dayTasks.slice(0,2).forEach(t=>{ const l=el('div'); l.style.cssText='margin-top:2px;background:var(--orange);color:#fff;border-radius:4px;font-size:9px;line-height:1.25;padding:1px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'; l.textContent=t.title; cell.appendChild(l); });
+    if(dayTasks.length>2){ const mo=el('div'); mo.style.cssText='font-size:9px;color:var(--ink-3);margin-top:1px'; mo.textContent='＋'+(dayTasks.length-2)+'件'; cell.appendChild(mo); }
+    cell.title=(isDl.map(sc=>'📮 '+sc.name+' 出願締切').concat(all.map(t=>(t.done?'✓ ':'')+t.title))).join('\n')||'予定なし';
+    cell.onclick=()=>openDaySheet(iso);
+    grid.appendChild(cell);
+  }
+  head.appendChild(grid);
+  const lg=el('p','xsmall muted','タップするとその日の予定を確認・チェックできます。📮＝出願締切、✓＝その日の予定は完了。'); lg.style.margin='8px 0 0'; head.appendChild(lg);
+  wrap.appendChild(head);
   const up=S.tasks.filter(t=>!t.done&&t.due).sort((a,b)=>a.due.localeCompare(b.due)).slice(0,5);
   const uc=el('div','card tight'); uc.innerHTML='<h4>近い締切</h4>'; up.forEach(t=>uc.appendChild(taskRow(t,true))); if(!up.length)uc.appendChild(el('p','small muted','期限つきタスクはありません。')); wrap.appendChild(uc);
   return wrap;
@@ -2397,6 +3002,92 @@ function editTask(id){
 /* =========================================================================
    フィードバック管理
    ========================================================================= */
+const CERT_DB=[{n:'実用英語技能検定（英検）',r:'えいけん'},{n:'TOEIC L&R',r:'とーいっく'},{n:'TOEIC S&W',r:'とーいっくえすだぶりゅー'},{n:'TOEFL iBT',r:'とーふる'},{n:'IELTS',r:'あいえるつ'},{n:'GTEC',r:'じーてっく'},{n:'TEAP',r:'てぃーぷ'},{n:'ケンブリッジ英語検定',r:'けんぶりっじえいごけんてい'},{n:'日本漢字能力検定（漢検）',r:'かんけん'},{n:'実用数学技能検定（数検）',r:'すうけん'},{n:'日商簿記検定',r:'にっしょうぼきけんてい'},{n:'全商簿記実務検定',r:'ぜんしょうぼき'},{n:'ITパスポート',r:'あいてぃーぱすぽーと'},{n:'基本情報技術者',r:'きほんじょうほうぎじゅつしゃ'},{n:'日本語検定',r:'にほんごけんてい'},{n:'実用フランス語技能検定（仏検）',r:'ふつけん'},{n:'ドイツ語技能検定',r:'どいつごぎのうけんてい'},{n:'中国語検定',r:'ちゅうごくごけんてい'},{n:'ハングル能力検定',r:'はんぐるのうりょくけんてい'},{n:'世界遺産検定',r:'せかいいさんけんてい'},{n:'ニュース時事能力検定',r:'にゅーすじじのうりょくけんてい'},{n:'秘書検定',r:'ひしょけんてい'},{n:'硬筆・毛筆書写検定',r:'しょしゃけんてい'},{n:'統計検定',r:'とうけいけんてい'},{n:'情報処理検定',r:'じょうほうしょりけんてい'},{n:'実用英語技能検定（英検S-CBT）',r:'えいけんえすしーびーてぃー'},{n:'国際連合公用語英語検定（国連英検）',r:'こくれんえいけん'},{n:'観光英語検定',r:'かんこうえいごけんてい'},{n:'日本語能力試験（JLPT）',r:'にほんごのうりょくしけん'},{n:'スペイン語技能検定',r:'すぺいんごぎのうけんてい'},{n:'実用イタリア語検定',r:'いたりあごけんてい'},{n:'ロシア語能力検定',r:'ろしあごのうりょくけんてい'},{n:'応用情報技術者',r:'おうようじょうほうぎじゅつしゃ'},{n:'情報セキュリティマネジメント',r:'じょうほうせきゅりてぃまねじめんと'},{n:'MOS（マイクロソフト オフィス スペシャリスト）',r:'もす'},{n:'サーティファイ Web検定',r:'うぇぶけんてい'},{n:'CGクリエイター検定',r:'しーじーくりえいたーけんてい'},{n:'マルチメディア検定',r:'まるちめでぃあけんてい'},{n:'画像処理エンジニア検定',r:'がぞうしょりえんじにあけんてい'},{n:'P検（ICTプロフィシエンシー検定）',r:'ぴーけん'},{n:'全商情報処理検定',r:'ぜんしょうじょうほうしょり'},{n:'全商商業経済検定',r:'ぜんしょうしょうぎょうけいざい'},{n:'全経簿記能力検定',r:'ぜんけいぼき'},{n:'ビジネス文書検定',r:'びじねすぶんしょけんてい'},{n:'ビジネス実務マナー検定',r:'びじねすじつむまなーけんてい'},{n:'サービス接遇検定',r:'さーびすせつぐうけんてい'},{n:'販売士（リテールマーケティング）',r:'はんばいし'},{n:'数学検定（実用数学技能検定）',r:'すうがくけんてい'},{n:'理科検定（実用理科技能検定）',r:'りかけんてい'},{n:'生物分類技能検定',r:'せいぶつぶんるいぎのうけんてい'},{n:'環境社会検定（eco検定）',r:'えこけんてい'},{n:'気象予報士',r:'きしょうよほうし'},{n:'天文宇宙検定',r:'てんもんうちゅうけんてい'},{n:'歴史能力検定',r:'れきしのうりょくけんてい'},{n:'日本城郭検定',r:'にほんじょうかくけんてい'},{n:'地図地理検定',r:'ちずちりけんてい'},{n:'ご当地検定・地域検定',r:'ごとうちけんてい'},{n:'食生活アドバイザー',r:'しょくせいかつあどばいざー'},{n:'食育インストラクター',r:'しょくいくいんすとらくたー'},{n:'調理師',r:'ちょうりし'},{n:'製菓衛生師',r:'せいかえいせいし'},{n:'color コーディネーター検定',r:'からーこーでぃねーたーけんてい'},{n:'ファッションビジネス能力検定',r:'ふぁっしょんびじねすけんてい'},{n:'インテリアコーディネーター',r:'いんてりあこーでぃねーたー'},{n:'福祉住環境コーディネーター',r:'ふくしじゅうかんきょうこーでぃねーたー'},{n:'介護職員初任者研修',r:'かいごしょくいんしょにんしゃけんしゅう'},{n:'救急救命講習（普通救命講習）',r:'きゅうきゅうきゅうめいこうしゅう'},{n:'赤十字救急法救急員',r:'せきじゅうじきゅうきゅうほう'},{n:'レクリエーション・インストラクター',r:'れくりえーしょんいんすとらくたー'},{n:'スポーツ指導者資格（日本スポーツ協会）',r:'すぽーつしどうしゃ'},{n:'危険物取扱者（乙4など）',r:'きけんぶつとりあつかいしゃ'},{n:'電気工事士',r:'でんきこうじし'},{n:'技能検定（各職種）',r:'ぎのうけんてい'},{n:'ボイラー技士',r:'ぼいらーぎし'},{n:'小型船舶操縦士',r:'こがたせんぱくそうじゅうし'},{n:'普通自動車運転免許',r:'うんてんめんきょ'},{n:'アマチュア無線技士',r:'あまちゅあむせん'},{n:'知的財産管理技能検定',r:'ちてきざいさんかんりぎのうけんてい'},{n:'法学検定',r:'ほうがくけんてい'},{n:'ビジネス会計検定',r:'びじねすかいけいけんてい'},{n:'金融リテラシー検定',r:'きんゆうりてらしーけんてい'},{n:'日本農業技術検定',r:'にほんのうぎょうぎじゅつけんてい'},{n:'園芸装飾技能士',r:'えんげいそうしょくぎのうし'},{n:'愛玩動物飼養管理士',r:'あいがんどうぶつしようかんりし'},{n:'日本手話検定・手話技能検定',r:'しゅわけんてい'},{n:'点字技能検定',r:'てんじぎのうけんてい'},{n:'音楽検定・楽典系検定',r:'おんがくけんてい'},{n:'ヤマハ音楽能力検定（グレード）',r:'やまはぐれーど'},{n:'美術検定',r:'びじゅつけんてい'},{n:'写真検定',r:'しゃしんけんてい'},{n:'国内旅行業務取扱管理者',r:'こくないりょこうぎょうむとりあつかいかんりしゃ'},{n:'総合旅行業務取扱管理者',r:'そうごうりょこうぎょうむとりあつかいかんりしゃ'},{n:'話しことば検定・アナウンス検定',r:'はなしことばけんてい'},{n:'弁論・スピーチ関連の認定',r:'べんろん'},{n:'数学オリンピック等の認定・表彰',r:'おりんぴっく'},{n:'その他（自由入力）',r:'そのた'}];
+function vCerts(){
+  const w=el('div','view');
+  const add=el('button','btn primary sm','＋ 資格を追加'); add.onclick=()=>editCert(null);
+  w.appendChild(pageHead('資格・検定','英検・TOEIC・漢検などの取得級・スコアを記録',add));
+  w.appendChild(el('div','note info','英語資格などは総合型選抜で加点・出願条件になることがあります。取得級・スコア・取得年月を記録しておきましょう。'));
+  if(!S.certs||!S.certs.length){ w.appendChild(emptyState('🏆','資格がまだありません','英検・TOEIC・漢検・簿記など、取得した資格・検定を登録できます。リストに無いものは直接入力できます。',(()=>{const b=el('button','btn primary','資格を追加');b.onclick=()=>editCert(null);return b;})())); return w; }
+  S.certs.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')).forEach(c=>{ const card=el('div','card tight'); const sub=[c.grade&&('級/スコア：'+c.grade),c.note].filter(Boolean).map(esc).join(' ・ '); card.innerHTML=`<div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(c.name)}</b>${c.date?`<span class="xsmall muted">${esc(c.date)}</span>`:''}</div>${sub?`<div class="small muted" style="margin-top:2px">${sub}</div>`:''}`; const ed=el('button','btn sm ghost','編集'); ed.style.marginTop='8px'; ed.onclick=()=>editCert(c.id); card.appendChild(ed); w.appendChild(card); });
+  return w;
+}
+function editCert(id){
+  const c=id?S.certs.find(x=>x.id===id):{};
+  openSheet(id?'資格を編集':'資格を追加',(b,close)=>{
+    const name=fieldAutocomplete('資格・検定名 *',c.name,{source:CERT_DB,hint:'一覧にない資格もそのまま入力できます（ひらがな可）',emptyNote:'候補にありません。マイナーな資格・検定は、正式名称をそのまま入力して登録してください。'}); b.appendChild(name);
+    const r=el('div','row2'); const grade=fieldText('級・スコア',c.grade,'例：2級 / 準1級 / 730点 / CEFR B2'); const date=fieldText('取得年月',c.date,null,{type:'month'}); r.append(grade,date); b.appendChild(r);
+    const note=fieldText('メモ',c.note,null,{area:true,rows:2,placeholder:'例：主催団体、正式名称、取得のきっかけ、活動とのつながり など'}); b.appendChild(note);
+    b.appendChild(el('p','xsmall muted','候補に出てこない資格・検定（地域の検定、専門分野の資格、民間の認定など）も、名前を直接入力すればそのまま登録できます。正式名称で書いておくと出願書類にそのまま使えます。'));
+    const sv=el('button','btn primary','保存'); sv.onclick=()=>{ if(!name.get()){toast('資格名を入力してください','warn');return;} if(id){ Object.assign(c,{name:name.get(),grade:grade.get(),date:date.get(),note:note.get()}); } else { S.certs=S.certs||[]; S.certs.push({id:uid(),name:name.get(),grade:grade.get(),date:date.get(),note:note.get()}); } close(); commit('保存しました'); }; b.appendChild(sv);
+    if(id){ const del=el('button','btn danger','削除'); del.style.marginLeft='6px'; del.onclick=()=>{close();confirmDelete('この資格を削除しますか？',()=>{S.certs=S.certs.filter(x=>x.id!==id);commit('削除しました');});}; b.appendChild(del); }
+  });
+}
+
+/* =========================================================================
+   音声入力・音声ファイルの文字起こし
+   - 🎤 音声入力：この端末のブラウザ標準音声認識（Chrome/Safari等）。音声は端末で文字に。
+   - 🎧 音声ファイル：ボイスメモ等の録音をOpenAI互換の文字起こしAPIへ送信（キー登録時のみ）
+   - 📎 ファイル：PDF/Word/パワポ/テキストの内容を貼り付け
+   ========================================================================= */
+function sttSupported(){ return !!(window.SpeechRecognition||window.webkitSpeechRecognition); }
+function sttFileReady(){ return !!(AICFG&&AICFG.key&&(AICFG.provider==='openai'||AICFG.provider==='compatible')); }
+async function transcribeAudio(file){
+  if(typeof window!=='undefined'&&window.__AO_STT_MOCK) return await window.__AO_STT_MOCK(file);
+  if(!sttFileReady()) throw new Error('音声ファイルの文字起こしには GPT（OpenAI）または互換API のキー登録が必要です。「その他 → AI設定」から登録してください。');
+  if(file.size>25*1024*1024) throw new Error('ファイルが大きすぎます（25MBまで）。録音を分割してお試しください。');
+  const base=(AICFG.provider==='openai')?'https://api.openai.com/v1':String(AICFG.baseURL||'').replace(/\/+$/,'');
+  if(!base) throw new Error('互換APIのエンドポイントが未設定です。');
+  const fd=new FormData(); fd.append('file',file,file.name||'audio.m4a'); fd.append('model',AICFG.sttModel||'whisper-1'); fd.append('language','ja');
+  const ctrl=new AbortController(); const to=setTimeout(()=>ctrl.abort(),180000);
+  try{
+    const res=await fetch(base+'/audio/transcriptions',{method:'POST',signal:ctrl.signal,headers:{'Authorization':'Bearer '+AICFG.key},body:fd});
+    if(!res.ok) throw new Error(await friendlyErr(res));
+    const j=await res.json(); const t=String(j.text||'').trim();
+    if(!t) throw new Error('音声から文字を取り出せませんでした。');
+    return t;
+  }catch(e){ if(e&&e.name==='AbortError') throw new Error('文字起こしがタイムアウトしました。録音を短く分割してお試しください。'); throw e; }
+  finally{ clearTimeout(to); }
+}
+/* 入力欄（textarea/input）の下に「音声入力・音声ファイル・ファイル読込」を付ける */
+function voiceTools(ta,opts){
+  opts=opts||{};
+  const wrap=el('div'); wrap.style.margin='-4px 0 10px';
+  const row=el('div','btn-row');
+  const status=el('div','xsmall muted'); status.style.marginTop='4px';
+  const fire=()=>{ try{ta.dispatchEvent(new Event('input',{bubbles:true}));}catch(e){} try{ta.dispatchEvent(new Event('change',{bubbles:true}));}catch(e){} if(opts.onchange)opts.onchange(ta.value); };
+  const append=(txt)=>{ const cur=String(ta.value||'').replace(/\s+$/,''); ta.value=cur?cur+'\n'+txt:txt; fire(); };
+  let rec=null,recording=false;
+  const mic=el('button','btn sm teal','🎤 音声入力');
+  mic.onclick=()=>{
+    if(recording){ try{rec.stop();}catch(e){} return; }
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!SR){ status.textContent='この端末・ブラウザは音声入力に未対応です。Chrome や Safari でお試しいただくか、🎧 で録音ファイルをご利用ください。'; toast('この端末は音声入力に未対応です','warn'); return; }
+    rec=new SR(); rec.lang='ja-JP'; rec.continuous=true; rec.interimResults=true;
+    const base=String(ta.value||'').replace(/\s+$/,''); let fin='';
+    rec.onstart=()=>{ recording=true; mic.textContent='⏹ 停止（録音中…）'; mic.classList.add('danger'); status.textContent='話してください。認識した言葉がそのまま入力されます。終わったら「停止」を押してください。'; };
+    rec.onresult=e=>{ let interim=''; for(let i=e.resultIndex;i<e.results.length;i++){ const r=e.results[i]; if(r.isFinal) fin+=r[0].transcript; else interim+=r[0].transcript; } ta.value=(base?base+'\n':'')+fin+interim; };
+    rec.onerror=ev=>{ const c=ev&&ev.error; status.textContent=(c==='not-allowed'||c==='service-not-allowed')?'マイクの使用が許可されていません。ブラウザの設定でマイクを許可してください。':(c==='no-speech'?'音声が聞き取れませんでした。もう一度お試しください。':'音声認識でエラーが発生しました（'+c+'）'); };
+    rec.onend=()=>{ recording=false; mic.textContent='🎤 音声入力'; mic.classList.remove('danger'); ta.value=(base?base+'\n':'')+fin; fire(); if(fin.trim()) status.textContent='音声入力を反映しました。誤変換がないか必ず確認してください。'; };
+    try{ rec.start(); }catch(e){ toast('音声入力を開始できませんでした','err'); }
+  };
+  row.appendChild(mic);
+  const af=el('button','btn sm','🎧 録音ファイルから文字起こし');
+  af.onclick=()=>{ const inp=el('input'); inp.type='file'; inp.accept='audio/*,.m4a,.mp3,.wav,.mp4,.webm,.ogg,.aac,.flac';
+    inp.onchange=async e=>{ const f=e.target.files[0]; if(!f) return; af.disabled=true; status.textContent='文字起こし中…（録音の長さにより数十秒かかります）';
+      try{ const t=await transcribeAudio(f); append(t); status.textContent='「'+f.name+'」を文字起こしして追記しました。誤変換がないか確認してください。'; toast('文字起こしを追記しました','ok'); }
+      catch(err){ status.textContent=''; toast((err&&err.message)||'文字起こしに失敗しました','err'); }
+      finally{ af.disabled=false; } };
+    inp.click(); };
+  row.appendChild(af);
+  const fl=el('button','btn sm ghost','📎 ファイルから貼り付け');
+  fl.onclick=()=>pickFile('.pdf,.docx,.pptx,.txt,.md,.csv',(text,meta)=>{ append(text); status.textContent='「'+((meta&&meta.name)||'ファイル')+'」の内容を追記しました。'; toast('読み込みました','ok'); });
+  row.appendChild(fl);
+  wrap.appendChild(row); wrap.appendChild(status);
+  const note=el('p','xsmall muted',opts.note||'🎤 は端末のマイクで話した内容を文字にします（Chrome / Safari など対応ブラウザ・要マイク許可）。🎧 はボイスメモ等の録音ファイルを文字起こしします（GPT／互換APIのキー登録が必要）。自動変換のため、誤りがないか必ず確認してください。');
+  note.style.marginTop='2px'; wrap.appendChild(note);
+  return wrap;
+}
 function vFeedback(){
   const w=el('div','view');
   const add=el('button','btn primary sm','＋ 追加'); add.onclick=()=>editFeedback(null);
@@ -2414,6 +3105,7 @@ function editFeedback(id){
     ff.target=fieldSelect('対象',f.target||'全体',targets); b.appendChild(ff.target);
     ff.from=fieldText('フィードバックした人',f.from,'例：高校の担任 / 塾講師 / 保護者'); b.appendChild(ff.from);
     ff.comment=fieldText('コメント',f.comment,null,{area:true,rows:3}); b.appendChild(ff.comment);
+    b.appendChild(voiceTools(ff.comment._input));
     ff.todo=fieldText('修正すべき内容（やること）',f.todo,null,{area:true,rows:2}); b.appendChild(ff.todo);
     ff.date=fieldText('受け取った日',f.date||todayISO(),null,{type:'date'}); b.appendChild(ff.date);
     const sv=el('button','btn primary','保存'); sv.onclick=()=>{ if(!ff.comment.get()){toast('コメントを入力してください','warn');return;} if(id){Object.assign(f,{target:ff.target.get(),from:ff.from.get(),comment:ff.comment.get(),todo:ff.todo.get(),date:ff.date.get()});} else S.feedback.push({id:uid(),target:ff.target.get(),from:ff.from.get(),comment:ff.comment.get(),todo:ff.todo.get(),date:ff.date.get(),done:false}); close(); commit('保存しました'); }; b.appendChild(sv);
@@ -2700,6 +3392,7 @@ function buildOutlines(b,limit,school,acts,q){
 /* =========================================================================
    初期化
    ========================================================================= */
+try{ checkVersion(); }catch(e){}
 render();
 initCloud();
 window.addEventListener('keydown',e=>{ if(e.key==='Escape'&&$('#overlay').classList.contains('open'))closeSheet(); });
