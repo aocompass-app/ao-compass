@@ -183,6 +183,13 @@ textarea.input{resize:vertical;min-height:80px;line-height:1.7}
 .searchbar .input{flex:1}
 
 .note{background:var(--warn-soft);border:1px solid #f0dcc2;color:#7a5320;border-radius:12px;padding:10px 12px;font-size:12px;line-height:1.6}
+.acc summary .badge{white-space:nowrap}
+.qt{border-left:3px solid var(--orange);background:var(--surface-2);border-radius:0 8px 8px 0;padding:6px 10px;margin:4px 0 8px;font-size:12px;line-height:1.7;color:var(--ink-2)}
+.qt b{color:var(--ink);font-weight:700}
+.qt .qlbl{display:block;font-size:10px;font-weight:800;color:var(--ink-3);margin-bottom:2px}
+.pararow{display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-top:1px solid var(--line)}
+.pararow:first-of-type{border-top:0}
+.parano{flex:none;width:26px;height:26px;border-radius:8px;background:var(--teal-soft);color:#0f6f6b;font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center}
 .note.info{background:var(--teal-soft);border-color:#c7e7e5;color:#0f6f6b}
 .ai-note{background:var(--surface-2);border-left:3px solid var(--teal);border-radius:8px;padding:9px 11px;font-size:12px;color:var(--ink-2)}
 
@@ -301,7 +308,7 @@ hr.sep{border:none;border-top:1px solid var(--line);margin:14px 0}
 /* =========================================================================
    AO Compass — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.04';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.06';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_KEY='aoCompass_v1';
 const LS_VER='aoCompass_ver';
 const $=s=>document.querySelector(s);
@@ -313,6 +320,11 @@ const todayISO=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.get
 function daysUntil(iso){ if(!iso) return null; const d=new Date(iso+'T00:00:00'); const t=new Date(); t.setHours(0,0,0,0); return Math.round((d-t)/86400000); }
 function fmtDate(iso){ if(!iso) return '—'; const d=new Date(iso+'T00:00:00'); return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`; }
 function countJP(s){ return (s||'').replace(/\s/g,'').length; } // 空白を除く文字数
+/* 保存したAI分析を「いつの結果か」表示するため */
+function fmtDT(ts){ if(!ts) return '—'; const d=new Date(ts); const p=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日 ${p(d.getHours())}:${p(d.getMinutes())}`; }
+/* 本文が分析時から変わったかを判定するための短い指紋 */
+function txtSig(t){ t=String(t||''); let h=0; for(let i=0;i<t.length;i++){ h=(h*31+t.charCodeAt(i))|0; } return t.length+':'+h; }
 
 /* ---------------- State ---------------- */
 let S=load();
@@ -334,7 +346,7 @@ function migrate(raw){
   out.story=Object.assign({},D.story,raw.story||{});
   ['schools','activities','documents','interview','essays','tasks','feedback','certs'].forEach(k=>{ if(!Array.isArray(out[k])) out[k]=[]; });
   out.schools.forEach(x=>{ if(!x.checklist||typeof x.checklist!=='object') x.checklist={}; });
-  out.documents.forEach(d=>{ if(!Array.isArray(d.feedbacks))d.feedbacks=[]; if(!Array.isArray(d.versions))d.versions=[]; if(!d.paragraphNotes||typeof d.paragraphNotes!=='object')d.paragraphNotes={}; if(!Array.isArray(d.scoreHistory))d.scoreHistory=[]; });
+  out.documents.forEach(d=>{ if(!Array.isArray(d.feedbacks))d.feedbacks=[]; if(!Array.isArray(d.versions))d.versions=[]; if(!d.paragraphNotes||typeof d.paragraphNotes!=='object')d.paragraphNotes={}; if(!Array.isArray(d.scoreHistory))d.scoreHistory=[]; if(d.aiAnalysis&&typeof d.aiAnalysis!=='object')d.aiAnalysis=null; });
   return out;
 }
 function load(){ try{const r=localStorage.getItem(LS_KEY);if(r)return migrate(JSON.parse(r));}catch(e){} return blankState(); }
@@ -612,6 +624,12 @@ const FILLER=['と思います','だと思う','のようなもの','など','�
 function hasNumbers(t){ return /[0-9０-９]+(人|名|回|時間|日|週間|ヶ月|か月|年|％|%|位|件|校|組|冊|万|千|点|部)/.test(t); }
 function detectAbstract(t){ return ABSTRACT_WORDS.filter(w=>t.includes(w)); }
 function firstPerson(t){ return /(私は|自分は|私が|自分が|担当し|提案し|企画し|作成し|交渉し|呼びかけ|巻き込)/.test(t); }
+/* 指摘を本文に結びつけるため、該当する一文を取り出します */
+function splitSent(t){ const out=[]; let cur='';
+  String(t||'').split('').forEach(ch=>{ cur+=ch; if(ch==='。'||ch==='！'||ch==='？'||ch==='\n'){ const v=cur.trim(); if(v.length>1) out.push(v); cur=''; } });
+  const v=cur.trim(); if(v.length>1) out.push(v); return out; }
+function clip(x,n){ x=String(x||'').replace(/\s+/g,' ').trim(); n=n||34; return x.length>n?x.slice(0,n)+'…':x; }
+function sentWith(t,word){ const s=splitSent(t).find(x=>x.includes(word)); return s?clip(s):''; }
 
 /* テキストを設問・大学情報に照らして分析し、8観点スコア＋指摘＋質問を返す */
 function analyzeText(text, ctx={}){
@@ -622,7 +640,8 @@ function analyzeText(text, ctx={}){
   const fp=firstPerson(t);
   const school=ctx.school||null;
   const univName=school?school.name:'';
-  const mentionsUniv=univName&&t.includes(univName.replace(/大学$/,''));
+  const univRef=/(貴学|貴学部|貴校|本学部|御校)/.test(t)&&/(ゼミ|ゼミナール|研究室|カリキュラム|講義|授業|学科|プログラム|教授|先生の研究)/.test(t);
+  const mentionsUniv=!!((univName&&t.includes(univName.replace(/大学$/,'')))||univRef);
   const sentences=t.split(/[。\n]/).filter(s=>s.trim().length>0);
   const longSent=sentences.filter(s=>countJP(s)>70);
   // repetition
@@ -645,15 +664,113 @@ function analyzeText(text, ctx={}){
   else if(limit && len<Math.floor(limit*0.6)) findings.push({sev:'check',title:`文字数が少なめです（${len}/${limit}字）`,why:'指定量に対して情報が不足し、説得力が弱く見える可能性があります。',how:'具体的な出来事・数字・あなたの行動を1つ足せます。'});
   if(!num) findings.push({sev:'important',title:'具体的な数字・固有名詞が見当たりません',why:'「頑張った」規模が読み手に伝わらず、印象に残りにくくなります。',how:'例：「約120人が来場」「3か月間」「週2回」など、規模や期間を入れられますか？',q:'その活動を数字で表すと、どのくらいの規模・期間・回数でしたか？'});
   if(!fp) findings.push({sev:'important',title:'「あなた自身が何をしたか」が読み取りにくいです',why:'面接で「実際にあなたは何を?」と必ず問われます。集団の成果と個人の行動を分けて書きましょう。',how:'「私は〇〇を提案し、△△を担当した」の形で主語をあなたにできますか？',q:'その中で、あなた自身が具体的に決めた・動いたことは何ですか？'});
-  if(abs.length>=3) findings.push({sev:'important',title:`抽象的な表現が多めです（${abs.slice(0,4).map(esc).join('・')} など）`,why:'誰にでも当てはまる言葉は、あなたらしさや説得力を弱めます。',how:'抽象語を、それを裏づける具体的なエピソード1つに置き換えられますか？',q:'「'+esc(abs[0])+'」と感じた具体的な場面を1つ挙げるとしたら？'});
+  if(abs.length>=3&&!abs.slice(0,3).some(w=>sentWith(t,w))) findings.push({sev:'important',cat:'具体性',title:`抽象的な表現が多めです（${abs.slice(0,4).map(esc).join('・')} など）`,why:'誰にでも当てはまる言葉は、あなたらしさや説得力を弱めます。',how:'抽象語を、それを裏づける具体的なエピソード1つに置き換えられますか？',q:'「'+esc(abs[0])+'」と感じた具体的な場面を1つ挙げるとしたら？'});
   if(univName && !mentionsUniv) findings.push({sev:'important',title:`「なぜこの大学・学部なのか」が弱い可能性`,why:'他大学でも成り立つ内容だと、志望度が伝わりにくくなります。',how:`${esc(univName)}ならではの学び（ゼミ・カリキュラム・研究）に触れられますか？`,q:'他の大学ではなく、この大学でなければならない理由は何ですか？'});
   if(longSent.length) findings.push({sev:'check',title:`一文が長い箇所があります（${longSent.length}か所）`,why:'一文が長いと主語と述語の関係が読み取りにくくなります。',how:'70字を超える文を2文に分けると読みやすくなります。'});
   if(repeated.length) findings.push({sev:'check',title:`同じ語の繰り返し（${repeated.map(esc).join('・')}）`,why:'同語反復は内容の薄さや単調さの印象につながります。',how:'言い換えるか、重複部分を1つにまとめられます。'});
 
+  /* ここから：本文の該当箇所を引用して、より踏み込んだ指摘を出します */
+  const sents=splitSent(t);
+  const paras=t.split(/\n\s*\n|\n/).map(x=>x.trim()).filter(Boolean);
+  const hasCause=/(なぜなら|理由は|そのため|だから|よって|きっかけ|きっかけは|背景に)/.test(t);
+  const hasFuture=/(将来|卒業後|進路|なりたい|目指し|キャリア|職に|仕事に)/.test(t);
+  const hasStudyPlan=/(ゼミ|研究室|カリキュラム|講義|科目|教授|プログラム|演習|コース|専攻)/.test(t);
+  const hasOrigin=/(きっかけ|始めた|出会|体験し|経験した|見たとき|知ったとき)/.test(t);
+  const hasNow=/(現在|今も|続けて|今後|問題意識|課題だと|疑問)/.test(t);
+  const learnWords=['学んだ','学びました','大切だと','気づいた','気付いた','痛感し','実感し','考えるようになっ'];
+  // (1) 抽象語ごとに、その語が入っている一文を引用する
+  abs.filter(w=>sentWith(t,w)).slice(0,2).forEach(w=>{ const q=sentWith(t,w);
+    findings.push({sev:'important',cat:'具体性',quote:q,title:'「'+w+'」が、中身のないまま置かれています',
+      why:'この語は誰でも書けるため、読み手には何も伝わりません。ここを具体に変えるだけで印象が変わります。',
+      how:'「'+w+'」を消し、その代わりに「いつ・どこで・誰に・何をして・どうなったか」を1文で入れてください。',
+      q:'「'+w+'」と書きたくなった場面を、1つだけ思い出すとしたら何ですか？'}); });
+  // (2) 学び・気づきの直前に、根拠となる事実があるか
+  learnWords.some(w=>{ const i=sents.findIndex(x=>x.includes(w)); if(i<0) return false;
+    const before=i>0?sents[i-1]:''; if(hasNumbers(before)&&firstPerson(before)) return false;
+    findings.push({sev:'must',cat:'論理',quote:clip(sents[i]),title:'「'+w.replace(/[のに]$/,'')+'」の根拠になる出来事が、直前に書かれていません',
+      why:'結論だけが先に置かれると、読み手は「本当にそう思ったのか」を確かめられません。ここが総合型選抜で最も見られる箇所です。',
+      how:'この一文の直前に、そう考えるに至った具体的な出来事を1つ（誰の、どんな反応があったか）足してください。',
+      q:'そう考えるようになった決定的な出来事は、いつの何でしたか？'}); return true; });
+  // (3) 因果の言葉がまったくない
+  if(!hasCause&&len>150) findings.push({sev:'important',cat:'論理',quote:'',title:'「なぜそうしたのか」の説明が本文にありません',
+    why:'やったことの列挙だけだと、判断の質が読み取れません。大学が見たいのは行動そのものより、その選択の理由です。',
+    how:'行動を書いた文のどれか1つに「なぜなら」「そのため」を足し、選んだ理由を書いてください。',
+    q:'いくつか選べた中で、なぜその方法を選んだのですか？'});
+  // (4) 段落が分かれていない
+  if(paras.length<=1&&len>350) findings.push({sev:'check',cat:'読みやすさ',quote:clip(t,40),title:'最後まで段落が分かれていません',
+    why:'一続きの文章は、どこで話が変わったのかが分からず、読み飛ばされやすくなります。',
+    how:'「経験」「気づき」「大学で学びたいこと」「将来」のように、話が変わるところで改行してください。'});
+  // (5) 冒頭の一文
+  if(sents.length){ const head=sents[0];
+    if(ABSTRACT_WORDS.some(w=>head.includes(w))||/^私は.{0,10}(に|が)(興味|関心)/.test(head))
+      findings.push({sev:'important',cat:'独自性',quote:clip(head),title:'冒頭の一文が、誰でも書ける書き出しになっています',
+        why:'読み手は何十枚も続けて読みます。最初の一文が平凡だと、残りも同じ調子だと思われます。',
+        how:'冒頭を、あなたにしか書けない具体的な場面（見たもの・言われた言葉・数字）から始めてください。',
+        q:'この書類の内容を一場面だけ映像にするなら、どの場面ですか？'}); }
+  // (6) 締めが決意表明で終わっている
+  if(sents.length){ const tail=sents[sents.length-1];
+    if(/(頑張りたい|努力したい|貢献したい|成長したい|学びたいです|活かしたいです|精進)/.test(tail))
+      findings.push({sev:'important',cat:'独自性',quote:clip(tail),title:'最後が決意表明で終わっています',
+        why:'決意は誰でも書けるため、締めの一文が最も弱い場所になってしまっています。',
+        how:'最後を「何をしたいか」ではなく「何をする人になるか」まで具体化してください。対象・場所・手段のどれかを入れます。',
+        q:'その気持ちを実際の行動にすると、大学4年間で何をしますか？'}); }
+  // (7) 将来像がない
+  if(!hasFuture&&len>200) findings.push({sev:'important',cat:'論理',quote:'',title:'卒業後・将来の話が出てきません',
+    why:'経験と大学がつながっていても、その先が無いと「入って終わり」に見えます。',
+    how:'最後の段落に、学んだことを卒業後どこで使うつもりかを1〜2文で足してください。断定でなく現時点の考えで構いません。',
+    q:'この学びを、卒業後どんな場面で使いたいですか？'});
+  // (8) 大学で何を学ぶかが具体的でない
+  if(!hasStudyPlan&&len>200) findings.push({sev:'must',cat:'志望校接続',quote:'',title:'大学で何を学ぶかが、科目・ゼミの名前で書かれていません',
+    why:'「学びたい」だけでは、募集要項を読んだかどうかが伝わりません。ここは調べれば必ず埋められる箇所です。',
+    how:'大学の公式サイトでカリキュラムやゼミの一覧を見て、興味のあるものを1つ挙げ、自分の経験とつなげてください。',
+    q:'その学部のシラバスで、いちばん受けたい授業はどれですか？'});
+  // (9) 原体験がない
+  if(!hasOrigin&&len>200) findings.push({sev:'check',cat:'独自性',quote:'',title:'その関心を持った「きっかけ」が書かれていません',
+    why:'きっかけがないと、志望理由が後づけに見えます。',
+    how:'最初の段落に、関心を持った出来事を1文で足してください。',
+    q:'それに関心を持った最初の出来事は何でしたか？'});
+  // (10) 現在の問題意識がない
+  if(!hasNow&&len>250) findings.push({sev:'check',cat:'論理',quote:'',title:'過去の話で止まっていて、今の問題意識が見えません',
+    why:'過去→大学→将来のうち「今」が抜けると、話が飛んで見えます。',
+    how:'経験の話のあとに、今も感じている疑問・課題を1文入れてください。'});
+  // (11) 一文が長い箇所を引用
+  if(longSent.length){ const worst=longSent.slice().sort((a,b)=>countJP(b)-countJP(a))[0];
+    findings.push({sev:'check',cat:'読みやすさ',quote:clip(worst,40),title:'この一文が長すぎます（'+countJP(worst)+'字）',
+      why:'主語と述語が離れると、読み手が意味を取り違えます。',
+      how:'意味の切れ目で2文に分けてください。「〜し、〜し、」が続く所が切れ目です。'}); }
+  // (12) 文体の混在
+  if(/(です。|ます。)/.test(t)&&/(である。|だ。)/.test(t)) findings.push({sev:'important',cat:'読みやすさ',quote:'',title:'「です・ます」と「だ・である」が混ざっています',
+    why:'文体の不統一は、見直していない書類だと受け取られます。',
+    how:'どちらかに統一してください。志望理由書は「です・ます」が一般的です。'});
+  // (13) 「思います」の多用
+  { const th=(t.match(/思います|思う/g)||[]).length;
+    if(th>=3) findings.push({sev:'check',cat:'読みやすさ',quote:sentWith(t,'思います')||sentWith(t,'思う'),title:'「思います」が'+th+'回出ています',
+      why:'推量が重なると、自信のない印象になります。事実は言い切って構いません。',
+      how:'事実を述べている所は「〜です」に、考えを述べている所だけ「〜と考えます」に直してください。'}); }
+  // (14) 設問の言葉に答えているか
+  if(ctx.question){ const STOPQ=['理由','説明','記述','以内','述べ','自由','程度','字数','本学','貴学','本学部','貴学部','本校','貴校','本学科','以上','記入','解答','回答','具体的','明記','内容','場合','注意'];
+    const keys=(ctx.question.match(/[一-龯]{2,}/g)||[]).filter(w=>!STOPQ.includes(w)).filter(w=>!/^(本|貴|御)(学|校)/.test(w));
+    const miss=keys.filter(k=>!t.includes(k)).slice(0,4);
+    if(miss.length) findings.push({sev:'important',cat:'設問適合',quote:'',title:'設問の言葉が本文に出てきません（'+miss.join('・')+'）',
+      why:'設問の語を使わないと、聞かれたことに答えていないと判断されることがあります。',
+      how:'設問の言葉をそのまま1回は本文で使い、それに正面から答える文を入れてください。'}); }
+
+  /* 書くべきなのに、まだ書かれていないもの */
+  const missing=[];
+  if(!num) missing.push('活動の規模・期間・回数を示す数字');
+  if(!fp) missing.push('その中であなた自身が決めた・動いたこと');
+  if(univName&&!mentionsUniv) missing.push('その大学でなければならない理由');
+  if(!hasStudyPlan) missing.push('大学で受けたい授業・ゼミの名前');
+  if(!hasFuture) missing.push('卒業後にやりたいこと');
+  if(!hasOrigin) missing.push('その関心を持ったきっかけ');
+  if(!hasCause) missing.push('その行動を選んだ理由');
+
+  const SEVR={must:0,important:1,check:2};
+  findings.sort((a,b)=>(SEVR[a.sev]==null?3:SEVR[a.sev])-(SEVR[b.sev]==null?3:SEVR[b.sev]));
   const priorities=findings.filter(f=>f.sev!=='check').slice(0,3);
   const nextActions=priorities.length?priorities.map(f=>f.title):['大きな問題は見つかりませんでした。声に出して読み、詰まる箇所を微調整しましょう。'];
   const rewrites=abs.length?buildRewrites(t,abs):[];
-  return {len,scores,findings,priorities,nextActions,rewrites,highlights:{abstract:abs,longSent}};
+  return {len,scores,findings,priorities,nextActions,missing,rewrites,highlights:{abstract:abs,longSent}};
 }
 function relevanceToQuestion(t,q){
   const keys=(q.match(/[一-龯]{2,}/g)||[]).filter(w=>!['理由','説明','記述','以内','述べ','あなた','ください'].includes(w));
@@ -2234,12 +2351,27 @@ function openDocEditor(id,tab){
       d.body=$('#overlay').querySelector('textarea')?.value||d.body; // 念のため最新
       const school=S.schools.find(s=>s.id===d.schoolId);
       const a=analyzeText(d.body,{charLimit:d.charLimit,school,question:d.question,hasPolicy:!!(school&&school.policy),storyLinked:!!S.story.origin,docType:d.type});
-      if(aiReady()){ const cta=el('button','btn primary block','🤖 '+aiLabel()+'で詳しく分析する'); cta.onclick=()=>analyzeAndShow(d.body,{charLimit:d.charLimit,school,question:d.question,hasPolicy:!!(school&&school.policy),docType:d.type,doc:d},'分析結果'); pane.appendChild(cta); pane.appendChild(el('p','xsmall muted','↓ 以下は瞬時に出るオフラインの簡易チェックです。')); }
+      const aiCtx={charLimit:d.charLimit,school,question:d.question,hasPolicy:!!(school&&school.policy),docType:d.type,doc:d};
+      const rerun=()=>analyzeAndShow(d.body,aiCtx,'分析結果',true);
+      const savedOK=!!(d.aiAnalysis&&d.aiAnalysis.data);
+      if(aiReady()||savedOK){
+        const cta=el('button','btn primary block',savedOK?('🤖 '+aiLabel()+'で分析し直す'):('🤖 '+aiLabel()+'で詳しく分析する'));
+        if(aiReady()){ cta.onclick=()=>analyzeAndShow(d.body,aiCtx,'分析結果'); pane.appendChild(cta); }
+        else { const c2=el('button','btn teal block','🔌 本物のAIに接続してより詳しく分析'); c2.onclick=()=>openAISettings(); pane.appendChild(c2); }
+      }
       else { const cta=el('button','btn teal block','🔌 本物のAIに接続してより詳しく分析'); cta.onclick=()=>openAISettings(); pane.appendChild(cta); }
+      if(savedOK){
+        const sbox=el('div','card tight'); sbox.style.borderLeft='3px solid var(--teal)';
+        sbox.appendChild(el('h4',null,'🤖 保存されているAI分析'));
+        _analyzeDoc=d;
+        renderSavedAnalysis(sbox,d,d.body,rerun);
+        pane.appendChild(sbox);
+      }
+      pane.appendChild(el('p','xsmall muted','↓ 以下は瞬時に出るオフラインの簡易チェックです（APIは使いません）。'));
       pane.appendChild(el('div','note','🤖 <b>あなたが話していない経験は作りません。</b>指摘のヒントに沿って、あなた自身の言葉で直してください。'));
       // スコア
       const sc=el('div','card tight'); sc.appendChild(el('h4',null,'評価シート（合否予測ではありません）'));
-      renderScoreCard(sc,a.scores,{doc:d,text:d.body});
+      renderScoreCard(sc,a.scores,{doc:d,text:d.body,kind:'offline'});
       pane.appendChild(sc);
       // 次のアクション
       const na=el('div','card tight'); na.style.borderLeft='3px solid var(--orange)'; na.innerHTML='<h4>🚩 まず直すべきこと（最大3件）</h4>';
@@ -2248,7 +2380,8 @@ function openDocEditor(id,tab){
       // ハイライト
       if(a.highlights.abstract.length){ const hb=el('div','card tight'); hb.innerHTML='<h4>本文の気になる箇所</h4>'; const body=el('p','small'); body.style.lineHeight='2'; let html=nl2br(d.body); a.highlights.abstract.forEach(wd=>{ html=html.split(esc(wd)).join(`<span class="hl-weak">${esc(wd)}</span>`); }); body.innerHTML=html||'（本文が空です）'; hb.appendChild(body); hb.appendChild(el('p','xsmall muted','オレンジ下線＝抽象的で、具体化すると伝わりやすくなる語')); pane.appendChild(hb); }
       // findings 詳細
-      a.findings.forEach(fd=>{ const det=el('details','acc'); const sevBadge=fd.sev==='must'?'<span class="badge alert">提出前に必須</span>':fd.sev==='important'?'<span class="badge warn">重要</span>':'<span class="badge grey">要確認</span>'; det.innerHTML=`<summary>${sevBadge} ${esc(fd.title)}</summary><div class="acc-body small"><p><b>なぜ：</b>${esc(fd.why)}</p><p><b>どう直す：</b>${esc(fd.how)}</p>${fd.q?`<div class="ai-note">🤔 あなたへの質問：${esc(fd.q)}</div>`:''}</div>`; pane.appendChild(det); });
+      renderMissing(pane,a.missing);
+      renderFindings(pane,a.findings);
       // 書き換えの方向性
       if(a.rewrites.length){ const rw=el('div','card tight'); rw.innerHTML='<h4>書き換えの方向性（3案）</h4><p class="xsmall muted">※文章を自動では置き換えません。採用するかはあなたが決めてください。</p>'; a.rewrites.forEach(r=>{ const d2=el('div'); d2.style.marginTop='8px'; d2.innerHTML=`<span class="badge teal">${esc(r.mode)}</span><p class="small" style="margin:4px 0 0">${esc(r.text)}</p>`; rw.appendChild(d2); }); pane.appendChild(rw); }
       // 大学適合＋面接質問
@@ -3179,7 +3312,10 @@ const AI_RULES=[
 '・情報が足りない部分は想像で埋めず、本人への質問として返す。',
 '・実績を誇張しない。合否や合格可能性を断定・保証しない。',
 '・文章を一方的にAIらしい表現へ置き換えない。本人らしさと事実を最優先する。',
-'・良い点と改善点の両方を伝える。',
+'・良い点と改善点の両方を伝える。ただし良い点は褒めるためではなく、どこを伸ばせば強くなるかを示すために書く。',
+'・指摘は必ず本文の具体的な箇所に結びつける。「具体性が足りません」「一貫性を高めましょう」のような、どの文にも当てはまる一般論だけの指摘は書かない。どの一文のどこが、なぜ弱いのかを、本文から引用して示す。',
+'・表面的な指摘（誤字・言い回し・文字数）だけで終わらせない。まず論の骨格（主張と根拠がつながっているか、経験から学びへの飛躍がないか、その大学でなければならない必然性があるか）を見る。',
+'・遠慮して指摘を減らさない。気づいた点は、重要な順にすべて挙げる。ただし表現は高校生を萎縮させない言い方にする。',
 '・大学に関する指摘は、与えられた資料（設問・アドミッションポリシー・求める人物像など）のみを根拠にし、書かれていない情報を事実として追加しない。',
 '・最終的な提出内容は本人・先生が確認するよう促す。',
 '・日本語で、高校生に分かりやすく、前向きな表現で。不安を過度に煽らない。'
@@ -3267,37 +3403,125 @@ function openAISettings(){
 /* ---- 本物のAIによる各機能 ---- */
 async function runAnalyzeAI(text,ctx){
   const isPres=ctx.docType==='プレゼン資料';
-  const sys=AI_RULES+'\n\n出力は日本語で、次のJSONのみ（コードブロックや前置き・後置きの文章を付けない）：\n{"good":["良い点(1〜3件)"],"priorities":["最優先で直すこと(最大3件、短い見出し)"],"scores":{"具体性":0,"一貫性":0,"独自性":0,"志望校との接続":0,"論理性":0,"読みやすさ":0,"設問への適合":0,"本人らしさ":0},"findings":[{"sev":"must|important|check","title":"指摘の見出し","why":"なぜ問題か","how":"どう直すか(具体的に)","q":"本人への質問(あれば)"}]}\n各scoreは0〜100の整数。sevは、提出前に必須=must、重要=important、要確認=check。';
+  const sys=AI_RULES+'\n\n出力は日本語で、次のJSONのみ（コードブロックや前置き・後置きの文章を付けない）：\n'
+    +'{"good":[{"quote":"本文からの引用","why":"なぜ効いているか／どう伸ばせるか"}],'
+    +'"priorities":["最優先で直すこと(最大3件、短い見出し)"],'
+    +'"scores":{"具体性":0,"一貫性":0,"独自性":0,"志望校との接続":0,"論理性":0,"読みやすさ":0,"設問への適合":0,"本人らしさ":0},'
+    +'"structure":[{"para":1,"role":"その段落が実際に果たしている役割","issue":"役割上の問題。無ければ空文字"}],'
+    +'"missing":["この設問に答えるうえで必要なのに、本文に書かれていない要素"],'
+    +'"interview":["この書類のままだと面接で突っ込まれる点"],'
+    +'"findings":[{"sev":"must|important|check","cat":"論理|具体性|独自性|志望校接続|設問適合|読みやすさ|事実確認","quote":"本文から一字一句そのまま引用(30字以内。本文全体に関わる指摘なら空文字)","title":"指摘の見出し(体言止めでなく、何が起きているかが分かる一文)","why":"なぜ問題か。入試の読み手にどう受け取られるかまで書く","how":"どう直すか。本人が次に取る手順として具体的に。ただし完成した文章そのものは書かない","q":"本人にしか答えられない質問"}]}\n'
+    +'各scoreは0〜100の整数。sevは、提出前に必須=must、重要=important、要確認=check。\n'
+    +'findingsは8〜12件。うちmustとimportantを合わせて4件以上。数合わせのために薄い指摘を足すのではなく、下の観点を順に当てれば必ずその数になる。\n'
+    +'必ず次の観点を一通り点検し、当てはまるものを指摘に含めること：\n'
+    +'(1)主張と根拠のつながり：「〜と考えた」「〜を学んだ」の直前に、そう考えるに至る事実が書かれているか。飛躍していないか。\n'
+    +'(2)因果の説明：なぜそう思ったのか、なぜその行動を選んだのかが書かれているか。結果だけになっていないか。\n'
+    +'(3)本人にしか書けないか：同じ文章を、同じ活動をした他の高校生がそのまま書けてしまわないか。書けてしまう箇所を指摘する。\n'
+    +'(4)必然性：その大学・学部でなければならない理由が、資料に基づいて書かれているか。他大学に置き換えても成立する文を指摘する。\n'
+    +'(5)抽象語：「頑張った」「様々な」「多くの」「コミュニケーション能力」など、中身が入っていない語を引用して挙げる。\n'
+    +'(6)重複：同じことを言い換えているだけの箇所。削れば字数が空くことも伝える。\n'
+    +'(7)時間の流れ：過去の経験→現在の問題意識→大学での学び→将来、のどこが抜けているか。\n'
+    +'(8)設問との対応：設問が聞いていることに正面から答えているか。聞かれていないことに字数を使っていないか。\n'
+    +'(9)事実確認：数値・期間・役割が曖昧で、面接で確認されそうな箇所。\n'
+    +'(10)読みやすさ：一文が長すぎる箇所、主語が入れ替わる箇所を引用して挙げる。\n'
+    +'quoteは必ず本文に実在する文字列をそのままコピーすること。要約や言い換えを入れない。\n'
+    +'structureは本文を段落（改行区切り。無ければ意味のまとまり）ごとに分け、それぞれが実際に果たしている役割を書く。書き手の意図ではなく、読み手にどう読めるかを書くこと。\n'
+    +'howでは、本人が埋めるべき内容を指示するにとどめ、代わりに書いた文例は出さないこと。';
   if(isPres) sys+='\nこれはプレゼン用スライド資料です（本文は【スライドn】ごとの文字）。次も重視：1スライド1メッセージか、結論・主張が先に伝わるか、文字が多すぎないか（口頭説明との役割分担）、具体例や数字があるか、話の流れに一貫性があるか、志望理由や活動との整合、想定質疑への備え。findingsでは該当スライド番号にも触れる。';
   let u='次の出願書類の文章を分析してください。\n【設問】'+(ctx.question||'（指定なし）')+'\n';
   if(ctx.charLimit)u+='【文字数制限】'+ctx.charLimit+'字（現在 '+countJP(text)+'字）\n'; else u+='【現在の文字数】'+countJP(text)+'字\n';
   if(ctx.school){ u+='【志望校】'+ctx.school.name+' '+(ctx.school.faculty||'')+' '+(ctx.school.dept||'')+'\n'; if(ctx.school.policy)u+='【アドミッションポリシー(登録資料)】'+ctx.school.policy+'\n'; if(ctx.school.ideal)u+='【大学が求める人物像(登録資料)】'+ctx.school.ideal+'\n'; }
   if(ctx.docType)u='【書類の種別】'+ctx.docType+'\n'+u;
-  u+='【本文】\n'+text;
-  const raw=await callAI(sys,u,{json:true,max:2200});
+  { const ps=String(text||'').split(/\n\s*\n|\n/).map(x=>x.trim()).filter(Boolean);
+    u+='【本文】'+(ps.length>1?'（段落番号つき。structureのparaはこの番号を使う）':'')+'\n'
+      +(ps.length>1?ps.map((x,i)=>'['+(i+1)+'] '+x).join('\n'):text); }
+  const raw=await callAI(sys,u,{json:true,max:4600});
   const j=extractJSON(raw); if(!j||!j.scores) throw new Error('AIの応答をうまく解釈できませんでした。もう一度お試しください。');
   return j;
 }
-function renderAnalysisReal(b,a,text){
-  const note=el('div','note'); note.innerHTML='🤖 <b>'+esc(aiLabel())+'による分析です。</b>AIは経験を捏造しません。指摘に沿って、あなた自身の言葉で直してください。提出前に本人・先生の確認を。'; b.appendChild(note);
-  if(a.good&&a.good.length){ const g=el('div','card tight'); g.innerHTML='<h4>👍 良い点</h4>'; const ul=el('ul');ul.style.paddingLeft='18px'; a.good.forEach(x=>{const li=el('li','small');li.textContent=x;ul.appendChild(li);}); g.appendChild(ul); b.appendChild(g); }
-  if(a.scores){ const sc=el('div','card tight'); sc.appendChild(el('h4',null,'評価シート（合否予測ではありません）')); renderScoreCard(sc,a.scores,{doc:(typeof _analyzeDoc!=='undefined'?_analyzeDoc:null),text:text}); b.appendChild(sc); }
+function renderAnalysisReal(b,a,text,opts){
+  opts=opts||{};
+  const _doc=opts.doc||(typeof _analyzeDoc!=='undefined'?_analyzeDoc:null);
+  if(!opts.noNote){ const note=el('div','note'); note.innerHTML='🤖 <b>'+esc(opts.label||aiLabel())+'による分析です。</b>AIは経験を捏造しません。指摘に沿って、あなた自身の言葉で直してください。提出前に本人・先生の確認を。'; b.appendChild(note); }
+  if(a.good&&a.good.length){ const g=el('div','card tight'); g.innerHTML='<h4>👍 効いている所</h4>';
+    a.good.forEach(x=>{
+      if(x&&typeof x==='object'){
+        if(x.quote){ const q=el('div','qt'); q.innerHTML='<span class="qlbl">本文より</span><b>「'+esc(x.quote)+'」</b>'; g.appendChild(q); }
+        g.appendChild(el('p','small',esc(x.why||x.title||'')));
+      } else { g.appendChild(el('p','small','・'+esc(x))); }
+    });
+    b.appendChild(g); }
+  if(a.scores){ const sc=el('div','card tight'); sc.appendChild(el('h4',null,'評価シート（合否予測ではありません）')); renderScoreCard(sc,a.scores,{doc:_doc,text:text,noHistory:!!opts.noHistory,kind:'ai'}); b.appendChild(sc); }
   if(a.priorities&&a.priorities.length){ const na=el('div','card tight');na.style.borderLeft='3px solid var(--orange)';na.innerHTML='<h4>🚩 まず直すべきこと</h4>'; const ol=el('ol');ol.style.paddingLeft='20px'; a.priorities.slice(0,3).forEach(x=>{const li=el('li','small');li.textContent=hwText(x);ol.appendChild(li);}); na.appendChild(ol); b.appendChild(na); }
   { const hl=(a.priorities&&a.priorities.length)?a.priorities:(a.findings||[]).filter(f=>f.sev==='must'||f.sev==='important').map(f=>f.title);
-    renderHomeworkBar(b,hl,(typeof _analyzeDoc!=='undefined'?_analyzeDoc:null)); }
-  (a.findings||[]).forEach(fd=>{ const det=el('details','acc'); const sev=fd.sev==='must'?'<span class="badge alert">提出前に必須</span>':fd.sev==='important'?'<span class="badge warn">重要</span>':'<span class="badge grey">要確認</span>'; det.innerHTML=`<summary>${sev} ${esc(fd.title||'')}</summary>`;
-    const bd=el('div','acc-body small'); bd.innerHTML=`${fd.why?`<p><b>なぜ：</b>${esc(fd.why)}</p>`:''}${fd.how?`<p><b>どう直す：</b>${esc(fd.how)}</p>`:''}${fd.q?`<div class="ai-note">🤔 ${esc(fd.q)}</div>`:''}`;
+    renderHomeworkBar(b,hl,_doc); }
+  /* 段落ごとに、実際どう読めているか */
+  if(a.structure&&a.structure.length){ const st=el('div','card tight'); st.innerHTML='<h4>🧱 段落ごとの役割（読み手にどう読めるか）</h4>';
+    a.structure.forEach((p,i)=>{ const r=el('div','pararow');
+      const no=el('div','parano',String(p.para||i+1)); const tx=el('div'); tx.style.flex='1';
+      tx.innerHTML='<div class="small" style="font-weight:700">'+esc(p.role||'')+'</div>'+(p.issue?'<div class="xsmall" style="color:#b4573f;margin-top:2px">⚠ '+esc(p.issue)+'</div>':'');
+      r.append(no,tx); st.appendChild(r); });
+    b.appendChild(st); }
+  /* 設問に答えるのに要るのに、まだ書かれていないこと */
+  if(a.missing&&a.missing.length){ const ms=el('div','card tight'); ms.style.borderLeft='3px solid var(--teal)';
+    ms.innerHTML='<h4>🕳 まだ書かれていないこと</h4><p class="xsmall muted" style="margin:2px 0 6px">ここを埋めると、内容そのものが増えます。</p>';
+    const ul=el('ul'); ul.style.paddingLeft='18px'; a.missing.forEach(x=>{ const li=el('li','small'); li.style.marginBottom='3px'; li.textContent=hwText(x); ul.appendChild(li); });
+    ms.appendChild(ul); b.appendChild(ms); }
+  const SEVR={must:0,important:1,check:2};
+  const FDS=(a.findings||[]).slice().sort((x,y)=>(SEVR[x&&x.sev]==null?3:SEVR[x.sev])-(SEVR[y&&y.sev]==null?3:SEVR[y.sev]));
+  if(FDS.length) b.appendChild(el('h4',null,'🔍 指摘（'+FDS.length+'件）'));
+  FDS.forEach(fd=>{ const det=el('details','acc'); const sev=fd.sev==='must'?'<span class="badge alert">提出前に必須</span>':fd.sev==='important'?'<span class="badge warn">重要</span>':'<span class="badge grey">要確認</span>';
+    const cat=fd.cat?'<span class="badge grey">'+esc(fd.cat)+'</span> ':'';
+    det.innerHTML=`<summary>${sev} ${cat}${esc(fd.title||'')}</summary>`;
+    const bd=el('div','acc-body small'); bd.innerHTML=`${fd.quote?`<div class="qt"><span class="qlbl">本文の該当箇所</span><b>「${esc(fd.quote)}」</b></div>`:''}${fd.why?`<p><b>なぜ：</b>${esc(fd.why)}</p>`:''}${fd.how?`<p><b>どう直す：</b>${esc(fd.how)}</p>`:''}${fd.q?`<div class="ai-note">🤔 ${esc(fd.q)}</div>`:''}`;
     const hb=el('button','btn sm block','📌 これを明日までの宿題にする');
-    hb.onclick=()=>{ const n=makeHomework([fd],(typeof _analyzeDoc!=='undefined'?_analyzeDoc:null),1); toast(n?'明日までの宿題にしました':'すでに登録されています','ok'); };
+    hb.onclick=()=>{ const n=makeHomework([fd],_doc,1); toast(n?'明日までの宿題にしました':'すでに登録されています','ok'); };
     bd.appendChild(hb); det.appendChild(bd); b.appendChild(det); });
+  if(a.interview&&a.interview.length){ const iv=el('div','card tight'); iv.style.borderLeft='3px solid var(--orange)';
+    iv.innerHTML='<h4>🎤 このままだと面接で聞かれる所</h4>';
+    const ul=el('ul'); ul.style.paddingLeft='18px'; a.interview.forEach(x=>{ const li=el('li','small'); li.style.marginBottom='3px'; li.textContent=hwText(x); ul.appendChild(li); });
+    iv.appendChild(ul); iv.appendChild(el('p','xsmall muted','答えられない質問があるなら、それはまだ書類に書けていない部分です。')); b.appendChild(iv); }
   b.appendChild(el('p','xsmall muted','※AIの評価は参考です。合否を保証するものではありません。'));
+}
+/* AI分析の結果は書類ごとに保存します。閉じても消えないので、開き直すたびにAPIを使わずに済みます。 */
+function saveDocAnalysis(doc,data,text){
+  if(!doc||!doc.id||!data) return;
+  doc.aiAnalysis={at:Date.now(),label:aiLabel(),sig:txtSig(text),len:countJP(text||''),data:data};
+  doc.updatedAt=Date.now();
+  try{ save(); }catch(e){}
+}
+function clearDocAnalysis(doc){ if(!doc) return; doc.aiAnalysis=null; doc.updatedAt=Date.now(); try{ save(); }catch(e){} }
+/* 保存された分析を、いつの結果かを添えて描画します */
+function renderSavedAnalysis(host,doc,curText,onRerun){
+  const sv=doc&&doc.aiAnalysis; if(!sv||!sv.data) return false;
+  const stale=sv.sig!==txtSig(curText==null?(doc.body||''):curText);
+  const hd=el('div','note info');
+  hd.innerHTML='💾 <b>'+esc(fmtDT(sv.at))+' の分析結果</b>（'+esc(sv.label||'AI')+'）を表示しています。書類を閉じても残るので、開き直すだけではAPIを使いません。';
+  host.appendChild(hd);
+  if(stale) host.appendChild(el('div','note','⚠️ この分析のあとで本文が変わっています。下の内容は<b>直す前</b>の文章に対する指摘です。直し終えたら、もう一度分析してください。'));
+  host.appendChild(el('p','xsmall muted','AIは経験を捏造しません。指摘に沿って、あなた自身の言葉で直してください。提出前に本人・先生の確認を。'));
+  renderAnalysisReal(host,sv.data,null,{noHistory:true,noNote:true,doc:doc,label:sv.label});
+  const row=el('div','btn-row'); row.style.marginTop='8px';
+  const rb=el('button','btn sm'+(stale?' primary':''),'🔄 いまの本文でもう一度AI分析する'); rb.onclick=()=>onRerun&&onRerun(); row.appendChild(rb);
+  const db=el('button','btn sm ghost','この結果を消す');
+  db.onclick=()=>confirmDelete('保存されたAI分析の結果を削除します。もう一度見るには、再度AIで分析する必要があります（APIを使います）。',()=>{ clearDocAnalysis(doc); toast('分析結果を削除しました','ok'); try{ closeSheet(); }catch(e){} if(typeof openDocEditor==='function'&&doc.id) openDocEditor(doc.id,'ai'); });
+  row.appendChild(db); host.appendChild(row);
+  host.appendChild(el('p','xsmall muted','※分析結果はこの端末の中にだけ保存されます。'));
+  return true;
 }
 /* 文脈から analyze を実行して結果シートを表示（real優先/簡易フォールバック） */
 let _analyzeDoc=null;
-function analyzeAndShow(text,ctx,titleBase){
-  _analyzeDoc=(ctx&&ctx.doc)||null;
+function analyzeAndShow(text,ctx,titleBase,force){
+  const doc=(ctx&&ctx.doc)||null;
+  _analyzeDoc=doc;
   if(!aiReady()){ const a=analyzeText(text,ctx); openSheet('🔎 '+titleBase+'（簡易AI）',bb=>renderAnalysis(bb,a,text)); return; }
-  openSheet('🔎 '+titleBase+'（'+aiLabel()+'）',bb=>{ const body=el('div'); bb.appendChild(body); const run=()=>{ aiLoading(body,'AIが分析しています…'); runAnalyzeAI(text,ctx).then(res=>{ body.innerHTML=''; renderAnalysisReal(body,res,text); }).catch(e=>{ body.innerHTML=''; aiError(body,e,run); }); }; run(); });
+  const sv=doc&&doc.aiAnalysis;
+  /* 本文が前回の分析から変わっていなければ、保存結果を出すだけ。APIは使いません。 */
+  if(!force&&sv&&sv.data&&sv.sig===txtSig(text)){
+    openSheet('🔎 '+titleBase+'（保存された結果）',bb=>{ _analyzeDoc=doc; renderSavedAnalysis(bb,doc,text,()=>analyzeAndShow(text,ctx,titleBase,true)); });
+    return;
+  }
+  openSheet('🔎 '+titleBase+'（'+aiLabel()+'）',bb=>{ const body=el('div'); bb.appendChild(body); const run=()=>{ _analyzeDoc=doc; aiLoading(body,'AIが分析しています…'); runAnalyzeAI(text,ctx).then(res=>{ body.innerHTML=''; saveDocAnalysis(doc,res,text); renderAnalysisReal(body,res,text,{doc:doc}); }).catch(e=>{ body.innerHTML=''; aiError(body,e,run); }); }; run(); });
 }
 async function runOutlineAI(limit,school,acts,q){
   const sys=AI_RULES+'\n方向性の異なる構成案を2〜3案、日本語で提示してください。各案について「## 案のタイトル」「中心テーマ」「段落構成（各段落の役割と目安字数）」「この構成の強み」「注意点」を、箇条書き中心で示します。与えられた活動経験だけを使い、無い経験は創作しない。完成した文章そのものは書かず、あくまで構成の骨組みと、本人が各段落を埋めるための指針・問いを示してください。';
@@ -3493,15 +3717,18 @@ function radarSVG(axes,size){
   return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="max-width:'+W+'px;height:auto" role="img" aria-label="観点別レーダーチャート">'+g+'</svg>';
 }
 /* 過去の評価を書類ごとに残す（前回比を出すため） */
-function pushScoreHistory(doc,total,text){
+function pushScoreHistory(doc,total,text,kind){
   if(!doc||!doc.id) return null;
   if(!Array.isArray(doc.scoreHistory)) doc.scoreHistory=[];
+  kind=kind||'ai';
   const len=countJP(text||'');
-  const h=doc.scoreHistory, last=h[h.length-1];
+  const h=doc.scoreHistory;
+  const same=h.filter(x=>(x.kind||'ai')===kind);
+  const last=same[same.length-1];
   const prev=last?last.total:null;
-  if(last&&last.total===total&&last.len===len) return prev===null?null:(h.length>1?h[h.length-2].total:null);
-  h.push({at:Date.now(),total:total,len:len});
-  if(h.length>10) doc.scoreHistory=h.slice(-10);
+  if(last&&last.total===total&&last.len===len) return same.length>1?same[same.length-2].total:null;
+  h.push({at:Date.now(),total:total,len:len,kind:kind});
+  if(h.length>20) doc.scoreHistory=h.slice(-20);
   try{ save(); }catch(e){}
   return prev;
 }
@@ -3511,7 +3738,7 @@ function renderScoreCard(host,scores,opts){
   if(!scores||!Object.keys(scores).length) return;
   const norm={}; Object.entries(scores).forEach(([k,v])=>{ norm[k]=Math.max(0,Math.min(100,Math.round(+v||0))); });
   const total=overallScore(norm), G=gradeOf(total);
-  const prev=opts.doc?pushScoreHistory(opts.doc,total,opts.text||''):null;
+  const prev=(opts.doc&&!opts.noHistory)?pushScoreHistory(opts.doc,total,opts.text||'',opts.kind):null;
   const wrap=el('div','gradesheet');
   const head=el('div','gs-head');
   const L=el('div','gs-letter',G); L.style.background=gradeColor(G);
@@ -3538,10 +3765,32 @@ function renderScoreCard(host,scores,opts){
 function renderAnalysis(b,a,text){
   b.appendChild(el('div','note','AIによる参考分析です。指摘は「なぜ・どう直すか」つき。採用はあなたが決めてください。'));
   const sc=el('div','card tight'); sc.appendChild(el('h4',null,'評価シート（合否予測ではありません）'));
-  renderScoreCard(sc,a.scores,{doc:(typeof _analyzeDoc!=='undefined'?_analyzeDoc:null),text:text}); b.appendChild(sc);
+  renderScoreCard(sc,a.scores,{doc:(typeof _analyzeDoc!=='undefined'?_analyzeDoc:null),text:text,kind:'offline'}); b.appendChild(sc);
   const na=el('div','card tight');na.style.borderLeft='3px solid var(--orange)';na.innerHTML='<h4>🚩 まず直すべきこと</h4>'; const ol=el('ol');ol.style.paddingLeft='20px'; a.nextActions.forEach(x=>{const li=el('li','small');li.textContent=x;ol.appendChild(li);});na.appendChild(ol);b.appendChild(na);
   renderHomeworkBar(b,(a.priorities&&a.priorities.length?a.priorities:a.nextActions),(typeof _analyzeDoc!=='undefined'?_analyzeDoc:null));
-  a.findings.forEach(fd=>{ const det=el('details','acc'); const sev=fd.sev==='must'?'<span class="badge alert">提出前に必須</span>':fd.sev==='important'?'<span class="badge warn">重要</span>':'<span class="badge grey">要確認</span>'; det.innerHTML=`<summary>${sev} ${esc(fd.title)}</summary><div class="acc-body small"><p><b>なぜ：</b>${esc(fd.why)}</p><p><b>どう直す：</b>${esc(fd.how)}</p>${fd.q?`<div class="ai-note">🤔 ${esc(fd.q)}</div>`:''}</div>`; b.appendChild(det); });
+  renderMissing(b,a.missing);
+  renderFindings(b,a.findings);
+}
+/* 「まだ書かれていないこと」— 直すより先に、足りない材料を足すほうが早いことが多い */
+function renderMissing(b,missing){
+  if(!missing||!missing.length) return;
+  const ms=el('div','card tight'); ms.style.borderLeft='3px solid var(--teal)';
+  ms.innerHTML='<h4>🕳 まだ書かれていないこと（'+missing.length+'件）</h4><p class="xsmall muted" style="margin:2px 0 6px">直す前に、ここを足すほうが早く良くなります。</p>';
+  const ul=el('ul'); ul.style.paddingLeft='18px';
+  missing.forEach(x=>{ const li=el('li','small'); li.style.marginBottom='3px'; li.textContent=hwText(x); ul.appendChild(li); });
+  ms.appendChild(ul); b.appendChild(ms);
+}
+/* 指摘一覧（引用つき）。重要な順に並べます。 */
+function renderFindings(b,findings){
+  const SEVR={must:0,important:1,check:2};
+  const fs=(findings||[]).slice().sort((x,y)=>(SEVR[x&&x.sev]==null?3:SEVR[x.sev])-(SEVR[y&&y.sev]==null?3:SEVR[y.sev]));
+  if(!fs.length) return;
+  b.appendChild(el('h4',null,'🔍 指摘（'+fs.length+'件）'));
+  fs.forEach(fd=>{ const det=el('details','acc');
+    const sev=fd.sev==='must'?'<span class="badge alert">提出前に必須</span>':fd.sev==='important'?'<span class="badge warn">重要</span>':'<span class="badge grey">要確認</span>';
+    const cat=fd.cat?'<span class="badge grey">'+esc(fd.cat)+'</span> ':'';
+    det.innerHTML=`<summary>${sev} ${cat}${esc(fd.title||'')}</summary><div class="acc-body small">${fd.quote?`<div class="qt"><span class="qlbl">本文の該当箇所</span><b>「${esc(fd.quote)}」</b></div>`:''}${fd.why?`<p><b>なぜ：</b>${esc(fd.why)}</p>`:''}${fd.how?`<p><b>どう直す：</b>${esc(fd.how)}</p>`:''}${fd.q?`<div class="ai-note">🤔 ${esc(fd.q)}</div>`:''}</div>`;
+    b.appendChild(det); });
 }
 function aiIdea(){
   const QS=['その活動を始めたきっかけは何ですか？','あなた自身は具体的に何をしましたか？','最も困ったことは何ですか？','どのような工夫をしましたか？','活動の前後で、あなたの中で何が変わりましたか？','その経験は、大学で学びたいこととどうつながりますか？','それを示す具体的な出来事や数字はありますか？'];
