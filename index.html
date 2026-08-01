@@ -190,11 +190,24 @@ textarea.input{resize:vertical;min-height:80px;line-height:1.7}
 .diff-del{background:#fbe9e4;color:#9c4a34;text-decoration:line-through;border-radius:3px;padding:0 2px}
 .diff-add{background:#e6f4ec;color:#1f6b43;border-radius:3px;padding:0 2px}
 
+.gradesheet{background:linear-gradient(180deg,#fbfcfd,#f4f7f9);border:1px solid var(--line);border-radius:var(--radius);padding:14px 12px;margin:8px 0}
+.gs-head{display:flex;align-items:center;gap:12px}
+.gs-letter{width:64px;height:64px;flex:none;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:34px;font-weight:900;color:#fff;letter-spacing:-1px;box-shadow:0 3px 10px rgba(31,41,51,.16)}
+.gs-meta{flex:1;min-width:0}
+.gs-meta .t{font-size:12px;font-weight:800;color:var(--ink-2)}
+.gs-meta .n{font-size:22px;font-weight:900;color:var(--navy);line-height:1.1}
+.gs-meta .d{font-size:11px;font-weight:700;margin-top:2px}
+.gs-radar{display:flex;justify-content:center;margin:4px 0 2px}
+.gs-axes{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:2px}
+.gs-ax{display:flex;align-items:center;gap:5px;background:var(--surface);border:1px solid var(--line);border-radius:99px;padding:3px 9px;font-size:11px;font-weight:700;color:var(--ink-2)}
+.gs-ax b{font-size:12px;font-weight:900}
+.gs-scale{display:flex;gap:4px;justify-content:center;margin-top:8px;flex-wrap:wrap}
+.gs-scale span{font-size:10px;font-weight:700;color:var(--ink-3);background:var(--surface-2);border-radius:99px;padding:2px 7px}
 .scorebar{display:flex;align-items:center;gap:9px;margin:7px 0}
-.scorebar .lbl{width:78px;font-size:12px;font-weight:700;color:var(--ink-2);flex:none}
+.scorebar .lbl{width:92px;font-size:12px;font-weight:700;color:var(--ink-2);flex:none}
 .scorebar .track{flex:1;height:7px;border-radius:99px;background:var(--surface-2);overflow:hidden}
 .scorebar .track>span{display:block;height:100%;border-radius:99px;background:var(--teal)}
-.scorebar .val{width:30px;text-align:right;font-size:12px;font-weight:800;color:var(--navy);flex:none}
+.scorebar .val{width:24px;text-align:right;font-size:12px;font-weight:800;color:var(--navy);flex:none}
 
 .acc{border:1px solid var(--line);border-radius:12px;margin-bottom:8px;overflow:hidden}
 .acc>summary{list-style:none;cursor:pointer;padding:12px 14px;font-weight:700;font-size:14px;display:flex;justify-content:space-between;align-items:center;background:#fbfcfd}
@@ -288,7 +301,7 @@ hr.sep{border:none;border-top:1px solid var(--line);margin:14px 0}
 /* =========================================================================
    AO Compass — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.02';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.04';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_KEY='aoCompass_v1';
 const LS_VER='aoCompass_ver';
 const $=s=>document.querySelector(s);
@@ -321,7 +334,7 @@ function migrate(raw){
   out.story=Object.assign({},D.story,raw.story||{});
   ['schools','activities','documents','interview','essays','tasks','feedback','certs'].forEach(k=>{ if(!Array.isArray(out[k])) out[k]=[]; });
   out.schools.forEach(x=>{ if(!x.checklist||typeof x.checklist!=='object') x.checklist={}; });
-  out.documents.forEach(d=>{ if(!Array.isArray(d.feedbacks))d.feedbacks=[]; if(!Array.isArray(d.versions))d.versions=[]; if(!d.paragraphNotes||typeof d.paragraphNotes!=='object')d.paragraphNotes={}; });
+  out.documents.forEach(d=>{ if(!Array.isArray(d.feedbacks))d.feedbacks=[]; if(!Array.isArray(d.versions))d.versions=[]; if(!d.paragraphNotes||typeof d.paragraphNotes!=='object')d.paragraphNotes={}; if(!Array.isArray(d.scoreHistory))d.scoreHistory=[]; });
   return out;
 }
 function load(){ try{const r=localStorage.getItem(LS_KEY);if(r)return migrate(JSON.parse(r));}catch(e){} return blankState(); }
@@ -2197,6 +2210,7 @@ function openDocEditor(id,tab){
     function paneEdit(){
       if(d.question){ const qb=el('div','note info'); qb.innerHTML='<b>設問：</b>'+nl2br(d.question); pane.appendChild(qb); }
       const stSel=fieldSelect('ステータス',d.status,['下書き','修正中','添削待ち','完成']); stSel.get=stSel.get; stSel.querySelector('select').onchange=e=>{d.status=e.target.value;touchDoc(d);}; pane.appendChild(stSel);
+      pane.appendChild(el('p','xsmall muted','「完成」にするまで、逆算プランに「推敲する」予定が繰り返し入り続けます。書類は一度では仕上がらないので、少しずつ何度も直していきましょう。'));
       const tySel=fieldSelect('種別',d.type||'志望理由書',DOC_TYPES); tySel.querySelector('select').onchange=e=>{d.type=e.target.value;touchDoc(d);}; pane.appendChild(tySel);
       const ta=el('textarea','input'); ta.rows=14; ta.value=d.body||''; ta.setAttribute('aria-label','本文'); ta.style.minHeight='240px'; pane.appendChild(ta);
       const cnt=el('div','counter'); pane.appendChild(cnt);
@@ -2220,16 +2234,17 @@ function openDocEditor(id,tab){
       d.body=$('#overlay').querySelector('textarea')?.value||d.body; // 念のため最新
       const school=S.schools.find(s=>s.id===d.schoolId);
       const a=analyzeText(d.body,{charLimit:d.charLimit,school,question:d.question,hasPolicy:!!(school&&school.policy),storyLinked:!!S.story.origin,docType:d.type});
-      if(aiReady()){ const cta=el('button','btn primary block','🤖 '+aiLabel()+'で詳しく分析する'); cta.onclick=()=>analyzeAndShow(d.body,{charLimit:d.charLimit,school,question:d.question,hasPolicy:!!(school&&school.policy),docType:d.type},'分析結果'); pane.appendChild(cta); pane.appendChild(el('p','xsmall muted','↓ 以下は瞬時に出るオフラインの簡易チェックです。')); }
+      if(aiReady()){ const cta=el('button','btn primary block','🤖 '+aiLabel()+'で詳しく分析する'); cta.onclick=()=>analyzeAndShow(d.body,{charLimit:d.charLimit,school,question:d.question,hasPolicy:!!(school&&school.policy),docType:d.type,doc:d},'分析結果'); pane.appendChild(cta); pane.appendChild(el('p','xsmall muted','↓ 以下は瞬時に出るオフラインの簡易チェックです。')); }
       else { const cta=el('button','btn teal block','🔌 本物のAIに接続してより詳しく分析'); cta.onclick=()=>openAISettings(); pane.appendChild(cta); }
       pane.appendChild(el('div','note','🤖 <b>あなたが話していない経験は作りません。</b>指摘のヒントに沿って、あなた自身の言葉で直してください。'));
       // スコア
-      const sc=el('div','card tight'); sc.appendChild(el('h4',null,'観点別の評価（合否予測ではありません）'));
-      Object.entries(a.scores).forEach(([k,v])=>{ const bar=el('div','scorebar'); const color=v>=70?'var(--ok)':v>=45?'var(--teal)':'var(--orange)'; bar.innerHTML=`<span class="lbl">${esc(k)}</span><span class="track"><span style="width:${v}%;background:${color}"></span></span><span class="val">${v}</span>`; sc.appendChild(bar); });
+      const sc=el('div','card tight'); sc.appendChild(el('h4',null,'評価シート（合否予測ではありません）'));
+      renderScoreCard(sc,a.scores,{doc:d,text:d.body});
       pane.appendChild(sc);
       // 次のアクション
       const na=el('div','card tight'); na.style.borderLeft='3px solid var(--orange)'; na.innerHTML='<h4>🚩 まず直すべきこと（最大3件）</h4>';
       const ol=el('ol'); ol.style.margin='8px 0 0';ol.style.paddingLeft='20px'; a.nextActions.forEach(x=>{const li=el('li','small');li.style.marginBottom='4px';li.textContent=x;ol.appendChild(li);}); na.appendChild(ol); pane.appendChild(na);
+      renderHomeworkBar(pane,(a.priorities&&a.priorities.length?a.priorities:a.nextActions),d);
       // ハイライト
       if(a.highlights.abstract.length){ const hb=el('div','card tight'); hb.innerHTML='<h4>本文の気になる箇所</h4>'; const body=el('p','small'); body.style.lineHeight='2'; let html=nl2br(d.body); a.highlights.abstract.forEach(wd=>{ html=html.split(esc(wd)).join(`<span class="hl-weak">${esc(wd)}</span>`); }); body.innerHTML=html||'（本文が空です）'; hb.appendChild(body); hb.appendChild(el('p','xsmall muted','オレンジ下線＝抽象的で、具体化すると伝わりやすくなる語')); pane.appendChild(hb); }
       // findings 詳細
@@ -2686,6 +2701,23 @@ function recommendMode(){
 function shortName(n){ n=String(n||''); return n.length>9?n.slice(0,9)+'…':n; }
 function docRemaining(d){ const cur=countJP(d.body||''); if(d.charLimit) return Math.max(0,d.charLimit-cur); return cur<200?800:0; }
 function selfUnanswered(){ try{ return SELF_Q.filter(q=>!(S.self.answers||{})[q.id]).length; }catch(e){ return 0; } }
+/* 書類は一度で仕上がらない。完成するまで「毎回ちがう観点で」直すためのリスト */
+const DOC_REVISE=[
+  ['抽象語を具体に直す','「頑張った」「様々な」を、実際の行動と数字に置き換えます。'],
+  ['主語を自分に戻す','「みんなで」ではなく「私は何をしたか」を書きます。'],
+  ['数字と固有名詞を足す','人数・回数・期間・名称が入ると、内容が一気に具体的になります。'],
+  ['結論を先に書く','各段落の1文目に、その段落で言いたいことを置きます。'],
+  ['一文を短く切る','60字を超える文は2つに割ると読みやすくなります。'],
+  ['志望校ならではの接点を書く','その大学でしか学べないことと、自分の経験をつなげます。'],
+  ['冒頭の一文を作り直す','最初の1文で読み手の興味を引けているか見直します。'],
+  ['経験と将来像をつなぐ','過去の話で終わらず、入学後・卒業後まで線を引きます。'],
+  ['重複を削って字数を空ける','同じ意味の文を1つにまとめ、空いた分で具体例を足します。'],
+  ['声に出して読む','つっかえた所が、読み手もつまずく所です。'],
+  ['AI分析で低い観点を直す','点数の低い項目を1つだけ選んで、そこだけ直します。'],
+  ['前回の指摘が直ったか確認する','直したつもりが直っていないことは、よくあります。'],
+  ['読み手を一人想像して書き直す','その学部の先生が読む前提で、伝わる言葉を選びます。'],
+  ['締めの一文を強くする','最後の1文が弱いと、全体の印象も弱まります。']
+];
 const PLAN_PRIO={'出願':1,'書類':2,'面接':3,'小論文':4,'自己分析':5,'情報収集':6,'探究':7,'資格':7,'学業':7,'振り返り':8};
 
 /* 長期モードの土台づくり（今日 〜 締切の約4ヶ月前まで、週ごとのリズム） */
@@ -2721,7 +2753,7 @@ function buildPlan(mode){
   mode=PLAN_MODES[mode]?mode:planMode();
   const M=PLAN_MODES[mode], cap=M.cap;
   const today=todayISO(); const raw=[];
-  const add=(ideal,title,category,school,why,hard)=>{ if(!ideal) return; raw.push({ideal:ideal,title:title,category:category,schoolId:school?school.id:null,why:why||'',hard:!!hard,prio:(hard?0:(PLAN_PRIO[category]||9))}); };
+  const add=(ideal,title,category,school,why,hard,prioOv)=>{ if(!ideal) return; raw.push({ideal:ideal,title:title,category:category,schoolId:school?school.id:null,why:why||'',hard:!!hard,prio:(hard?0:(prioOv!=null?prioOv:(PLAN_PRIO[category]||9)))}); };
   const targets=planTargets(mode);
   const end=planHorizon(mode);
   if(mode==='long') addLongFoundation(add,mode,end);
@@ -2741,7 +2773,8 @@ function buildPlan(mode){
     if(!cl.req){ const reqD=at(scale(40)); add(reqD>isoAdd(today,3)?isoAdd(today,3):reqD,sn+'：募集要項を読み、必要書類を書き出す','出願',s,t.est?'日程は概算です。要項が出たら実際の日付に更新を。':'ここが逆算の起点。提出物の抜けを防ぎます。'); }
     // --- 書類（量と進捗から必要な作業日数を計算） ---
     let docs=S.documents.filter(d=>d.schoolId===s.id&&d.status!=='完成');
-    if(!docs.length&&!cl.doc_ao) docs=[{id:null,title:'志望理由書',type:'志望理由書',body:'',charLimit:0,status:'未着手',_virtual:true}];
+    const anyDoc=S.documents.some(d=>d.schoolId===s.id);
+    if(!docs.length&&!cl.doc_ao&&!anyDoc) docs=[{id:null,title:'志望理由書',type:'志望理由書',body:'',charLimit:0,status:'未着手',_virtual:true}];
     docs.slice(0,4).forEach((d,di)=>{
       const nm=d.title.length>12?d.title.slice(0,12)+'…':d.title;
       const rem=docRemaining(d);
@@ -2759,6 +2792,17 @@ function buildPlan(mode){
       if(mode!=='sprint') add(at(scale(12)-off),nm+'：声に出して読み、字数を調整する','書類',s,'読みにくい所は文が長すぎるサイン。');
       add(at(scale(9)-off),nm+'：最終チェックを先生に依頼する','書類',s,'提出前の最後の確認。');
       add(at(scale(4)-off),nm+'：誤字・字数・様式を最終確認する','書類',s,'名前・受験番号・記入欄の抜けも確認。',mode==='sprint');
+      /* ここから：「完成」にするまで、繰り返し手を入れる予定を入れ続ける */
+      if(di<3){
+        const step=(mode==='sprint')?2:(mode==='mid'?3:5);
+        const maxN=Math.max(12,Math.min(scale(30),dd-1));
+        const cnt=(mode==='sprint')?8:(mode==='long'?14:12);
+        let ri=0;
+        for(let n=maxN;n>=5&&ri<cnt;n-=step){
+          const r=DOC_REVISE[(ri+di*3)%DOC_REVISE.length]; ri++;
+          add(at(Math.max(3,n-off)),nm+'：推敲する（'+r[0]+'）','書類',s,'完成するまで、少しずつでも毎回手を入れます。'+r[1],false,12);
+        }
+      }
     });
     // --- 面接 ---
     if(!cl.mensetsu){
@@ -2796,7 +2840,7 @@ function buildPlan(mode){
     items.push({date:d,title:it.title,category:it.category,schoolId:it.schoolId,why:it.why});
     });
   items.sort((a,b)=>a.date.localeCompare(b.date));
-  return items.slice(0,mode==='long'?260:120);
+  return items.slice(0,mode==='long'?420:260);
 }
 
 /* AIに日割りを組み直してもらう（登録情報のみを根拠にする） */
@@ -2950,7 +2994,8 @@ function taskRow(t,compact){
   r.appendChild(ck);
   const mid=el('div'); mid.style.flex='1';
   const ddBadge=t.done?'':dd==null?'':dd<0?'<span class="badge alert">期限超過</span>':dd===0?'<span class="badge warn">今日</span>':dd<=3?`<span class="badge warn">あと${dd}日</span>`:`<span class="badge grey">あと${dd}日</span>`;
-  mid.innerHTML=`<div class="${t.done?'strike small':'small'}" style="font-weight:600">${esc(t.title)}</div><div class="xsmall muted">${t.due?fmtDate(t.due):'期限なし'} ${ddBadge} ${t.category?'・'+esc(t.category):''} ${t.schoolId?'・'+esc(schoolName(t.schoolId)):''}</div>`;
+  const hwBadge=t.hw?'<span class="badge teal">📌 宿題</span> ':'';
+  mid.innerHTML=`<div class="${t.done?'strike small':'small'}" style="font-weight:600">${hwBadge}${esc(t.title)}</div><div class="xsmall muted">${t.due?fmtDate(t.due):'期限なし'} ${ddBadge} ${t.category?'・'+esc(t.category):''} ${t.schoolId?'・'+esc(schoolName(t.schoolId)):''}</div>`;
   r.appendChild(mid);
   if(!compact){ const ed=el('button','btn sm ghost','編集'); ed.onclick=()=>editTask(t.id); r.appendChild(ed); }
   return r;
@@ -3236,13 +3281,21 @@ async function runAnalyzeAI(text,ctx){
 function renderAnalysisReal(b,a,text){
   const note=el('div','note'); note.innerHTML='🤖 <b>'+esc(aiLabel())+'による分析です。</b>AIは経験を捏造しません。指摘に沿って、あなた自身の言葉で直してください。提出前に本人・先生の確認を。'; b.appendChild(note);
   if(a.good&&a.good.length){ const g=el('div','card tight'); g.innerHTML='<h4>👍 良い点</h4>'; const ul=el('ul');ul.style.paddingLeft='18px'; a.good.forEach(x=>{const li=el('li','small');li.textContent=x;ul.appendChild(li);}); g.appendChild(ul); b.appendChild(g); }
-  if(a.scores){ const sc=el('div','card tight'); sc.appendChild(el('h4',null,'観点別評価（合否予測ではありません）')); Object.entries(a.scores).forEach(([k,v])=>{ v=Math.max(0,Math.min(100,+v||0)); const color=v>=70?'var(--ok)':v>=45?'var(--teal)':'var(--orange)'; const bar=el('div','scorebar'); bar.innerHTML=`<span class="lbl">${esc(k)}</span><span class="track"><span style="width:${v}%;background:${color}"></span></span><span class="val">${v}</span>`; sc.appendChild(bar); }); b.appendChild(sc); }
-  if(a.priorities&&a.priorities.length){ const na=el('div','card tight');na.style.borderLeft='3px solid var(--orange)';na.innerHTML='<h4>🚩 まず直すべきこと</h4>'; const ol=el('ol');ol.style.paddingLeft='20px'; a.priorities.slice(0,3).forEach(x=>{const li=el('li','small');li.textContent=x;ol.appendChild(li);}); na.appendChild(ol); b.appendChild(na); }
-  (a.findings||[]).forEach(fd=>{ const det=el('details','acc'); const sev=fd.sev==='must'?'<span class="badge alert">提出前に必須</span>':fd.sev==='important'?'<span class="badge warn">重要</span>':'<span class="badge grey">要確認</span>'; det.innerHTML=`<summary>${sev} ${esc(fd.title||'')}</summary><div class="acc-body small">${fd.why?`<p><b>なぜ：</b>${esc(fd.why)}</p>`:''}${fd.how?`<p><b>どう直す：</b>${esc(fd.how)}</p>`:''}${fd.q?`<div class="ai-note">🤔 ${esc(fd.q)}</div>`:''}</div>`; b.appendChild(det); });
+  if(a.scores){ const sc=el('div','card tight'); sc.appendChild(el('h4',null,'評価シート（合否予測ではありません）')); renderScoreCard(sc,a.scores,{doc:(typeof _analyzeDoc!=='undefined'?_analyzeDoc:null),text:text}); b.appendChild(sc); }
+  if(a.priorities&&a.priorities.length){ const na=el('div','card tight');na.style.borderLeft='3px solid var(--orange)';na.innerHTML='<h4>🚩 まず直すべきこと</h4>'; const ol=el('ol');ol.style.paddingLeft='20px'; a.priorities.slice(0,3).forEach(x=>{const li=el('li','small');li.textContent=hwText(x);ol.appendChild(li);}); na.appendChild(ol); b.appendChild(na); }
+  { const hl=(a.priorities&&a.priorities.length)?a.priorities:(a.findings||[]).filter(f=>f.sev==='must'||f.sev==='important').map(f=>f.title);
+    renderHomeworkBar(b,hl,(typeof _analyzeDoc!=='undefined'?_analyzeDoc:null)); }
+  (a.findings||[]).forEach(fd=>{ const det=el('details','acc'); const sev=fd.sev==='must'?'<span class="badge alert">提出前に必須</span>':fd.sev==='important'?'<span class="badge warn">重要</span>':'<span class="badge grey">要確認</span>'; det.innerHTML=`<summary>${sev} ${esc(fd.title||'')}</summary>`;
+    const bd=el('div','acc-body small'); bd.innerHTML=`${fd.why?`<p><b>なぜ：</b>${esc(fd.why)}</p>`:''}${fd.how?`<p><b>どう直す：</b>${esc(fd.how)}</p>`:''}${fd.q?`<div class="ai-note">🤔 ${esc(fd.q)}</div>`:''}`;
+    const hb=el('button','btn sm block','📌 これを明日までの宿題にする');
+    hb.onclick=()=>{ const n=makeHomework([fd],(typeof _analyzeDoc!=='undefined'?_analyzeDoc:null),1); toast(n?'明日までの宿題にしました':'すでに登録されています','ok'); };
+    bd.appendChild(hb); det.appendChild(bd); b.appendChild(det); });
   b.appendChild(el('p','xsmall muted','※AIの評価は参考です。合否を保証するものではありません。'));
 }
 /* 文脈から analyze を実行して結果シートを表示（real優先/簡易フォールバック） */
+let _analyzeDoc=null;
 function analyzeAndShow(text,ctx,titleBase){
+  _analyzeDoc=(ctx&&ctx.doc)||null;
   if(!aiReady()){ const a=analyzeText(text,ctx); openSheet('🔎 '+titleBase+'（簡易AI）',bb=>renderAnalysis(bb,a,text)); return; }
   openSheet('🔎 '+titleBase+'（'+aiLabel()+'）',bb=>{ const body=el('div'); bb.appendChild(body); const run=()=>{ aiLoading(body,'AIが分析しています…'); runAnalyzeAI(text,ctx).then(res=>{ body.innerHTML=''; renderAnalysisReal(body,res,text); }).catch(e=>{ body.innerHTML=''; aiError(body,e,run); }); }; run(); });
 }
@@ -3338,11 +3391,156 @@ function aiAnalyze(){
     if(!aiReady()){ const c=el('button','btn ghost sm block','🔌 本物のAIに接続する');c.style.marginTop='8px';c.onclick=()=>openAISettings(); b.appendChild(c); }
   });
 }
+/* ===== AI分析の指摘を「宿題」タスクにする ===== */
+/* 指摘は読んだだけでは直りません。期限つきのタスクにして、次の日までの宿題にします。 */
+function hwText(x){
+  if(!x) return '';
+  if(typeof x==='string') return x.trim();
+  return String(x.title||x.how||x.why||'').trim();
+}
+/* 指摘は「〜がありません」のような診断の形なので、タスク名は行動の形に整えます */
+function hwTitle(t){
+  t=String(t||'').trim().replace(/[。．.]+$/,'');
+  if(/(ません|ないです|でない|不足|弱い|少ない|多すぎ|長すぎ|短すぎ|曖昧|あいまい|不明|見当たり)/.test(t)) return t+' → ここを直す';
+  return t;
+}
+function hwWhy(x,fallback){
+  if(x&&typeof x==='object'){ const w=[x.how,x.why].filter(Boolean).join(' / '); if(w) return w; }
+  return fallback||'AI分析で指摘された点です。自分の言葉で直してください。';
+}
+function makeHomework(list,doc,dayOff){
+  const due=isoAdd(todayISO(),dayOff);
+  const nm=doc&&doc.title?(doc.title.length>12?doc.title.slice(0,12)+'…':doc.title):'書類';
+  let n=0;
+  (list||[]).slice(0,3).forEach(x=>{
+    const t=hwText(x); if(!t) return;
+    const title=nm+'：'+hwTitle(t);
+    if(S.tasks.some(k=>!k.done&&k.title===title&&k.due===due)) return;
+    S.tasks.push({id:uid(),title:title,due:due,category:'書類',schoolId:doc?doc.schoolId:null,
+      why:hwWhy(x),auto:false,hw:true,done:false});
+    n++;
+  });
+  if(n){ save(); }
+  return n;
+}
+function renderHomeworkBar(host,list,doc){
+  const items=(list||[]).map(hwText).filter(Boolean);
+  if(!items.length) return;
+  const c=el('div','card tight'); c.style.borderLeft='3px solid var(--teal)';
+  c.innerHTML='<h4>📌 この指摘を「宿題」にする</h4>';
+  const p=el('p','xsmall muted'); p.style.margin='4px 0 8px';
+  p.textContent='上の指摘を、期限つきのタスクに変えてタスク一覧とホームに出します。読んで終わりにせず、次までに直しきるための宿題です。';
+  c.appendChild(p);
+  const ul=el('ul'); ul.style.cssText='margin:0 0 8px;padding-left:18px';
+  items.slice(0,3).forEach(t=>{ const li=el('li','xsmall'); li.style.marginBottom='2px'; li.textContent=t; ul.appendChild(li); });
+  c.appendChild(ul);
+  const row=el('div','btn-row');
+  [['今日中にやる',0],['明日までにやる',1],['3日後までにやる',3]].forEach(([lb,dv])=>{
+    const bt=el('button','btn sm'+(dv===1?' primary':''),lb);
+    bt.onclick=()=>{ const n=makeHomework(items,doc,dv);
+      toast(n?(n+'件を「'+lb+'」の宿題にしました'):'同じ宿題がすでに登録されています','ok'); };
+    row.appendChild(bt);
+  });
+  c.appendChild(row);
+  c.appendChild(el('p','xsmall muted','※プランを作り直しても、宿題は消えません。'));
+  host.appendChild(c);
+}
+/* ===== 模試の成績表のような「評価シート」 ===== */
+/* 5段階の評価。合否の予測ではなく、書けている度合いの目安です。 */
+function gradeOf(v){ v=Math.max(0,Math.min(100,+v||0)); return v>=85?'S':v>=72?'A':v>=58?'B':v>=42?'C':'D'; }
+function gradeColor(g){ return g==='S'?'#b8860b':g==='A'?'#2e8b57':g==='B'?'#128f8b':g==='C'?'#e8873b':'#b4573f'; }
+function gradeWord(g){ return g==='S'?'とても良く書けています':g==='A'?'かなり仕上がってきました':g==='B'?'土台はできています':g==='C'?'まだ直す余地が大きいです':'これから作り込みましょう'; }
+/* 8つの観点を5角形の5軸にまとめる */
+const RADAR_AXES=[
+  ['具体性',['具体性']],
+  ['論理・一貫',['一貫性','論理性']],
+  ['独自性',['独自性','本人らしさ']],
+  ['志望校適合',['志望校との接続','設問への適合']],
+  ['読みやすさ',['読みやすさ']]
+];
+function radarValues(scores){
+  const g=k=>Math.max(0,Math.min(100,+((scores||{})[k])||0));
+  return RADAR_AXES.map(([label,keys])=>{
+    const vs=keys.filter(k=>(scores||{})[k]!=null).map(g);
+    const v=vs.length?Math.round(vs.reduce((a,b)=>a+b,0)/vs.length):0;
+    return {label:label,value:v};
+  });
+}
+function overallScore(scores){
+  const vs=Object.values(scores||{}).map(v=>Math.max(0,Math.min(100,+v||0)));
+  if(!vs.length) return 0;
+  return Math.round(vs.reduce((a,b)=>a+b,0)/vs.length);
+}
+/* 五角形のレーダーチャートをSVGで描く（外部ライブラリ不要） */
+function radarSVG(axes,size){
+  size=size||250; const PAD=42, W=size+PAD*2, H=size+8;
+  const cx=W/2, cy=H/2, R=size*0.30;
+  const n=axes.length;
+  const pt=(i,r)=>{ const ang=(-90+i*360/n)*Math.PI/180; return [cx+Math.cos(ang)*r, cy+Math.sin(ang)*r]; };
+  const poly=r=>axes.map((_,i)=>pt(i,r).map(x=>x.toFixed(1)).join(',')).join(' ');
+  let g='';
+  [1,.75,.5,.25].forEach(f=>{ g+='<polygon points="'+poly(R*f)+'" fill="none" stroke="#dfe5ea" stroke-width="1"/>'; });
+  axes.forEach((_,i)=>{ const [x,y]=pt(i,R); g+='<line x1="'+cx+'" y1="'+cy+'" x2="'+x.toFixed(1)+'" y2="'+y.toFixed(1)+'" stroke="#dfe5ea" stroke-width="1"/>'; });
+  const dp=axes.map((a,i)=>pt(i,R*Math.max(0.02,(Math.max(0,Math.min(100,a.value))/100))).map(x=>x.toFixed(1)).join(',')).join(' ');
+  g+='<polygon points="'+dp+'" fill="rgba(18,143,139,.22)" stroke="#128f8b" stroke-width="2" stroke-linejoin="round"/>';
+  axes.forEach((a,i)=>{ const [x,y]=pt(i,R*Math.max(0.02,(Math.max(0,Math.min(100,a.value))/100))); g+='<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="3.2" fill="#128f8b"/>'; });
+  axes.forEach((a,i)=>{ const [x,y]=pt(i,R+18);
+    const anchor=Math.abs(x-cx)<6?'middle':(x>cx?'start':'end');
+    const dy=(y<cy-4)?0:(Math.abs(y-cy)<6?4:11);
+    g+='<text x="'+x.toFixed(1)+'" y="'+(y+dy).toFixed(1)+'" text-anchor="'+anchor+'" font-size="11" font-weight="700" fill="#556070">'+esc(a.label)+'</text>';
+    g+='<text x="'+x.toFixed(1)+'" y="'+(y+dy+13).toFixed(1)+'" text-anchor="'+anchor+'" font-size="11" font-weight="900" fill="'+gradeColor(gradeOf(a.value))+'">'+gradeOf(a.value)+'</text>';
+  });
+  return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="max-width:'+W+'px;height:auto" role="img" aria-label="観点別レーダーチャート">'+g+'</svg>';
+}
+/* 過去の評価を書類ごとに残す（前回比を出すため） */
+function pushScoreHistory(doc,total,text){
+  if(!doc||!doc.id) return null;
+  if(!Array.isArray(doc.scoreHistory)) doc.scoreHistory=[];
+  const len=countJP(text||'');
+  const h=doc.scoreHistory, last=h[h.length-1];
+  const prev=last?last.total:null;
+  if(last&&last.total===total&&last.len===len) return prev===null?null:(h.length>1?h[h.length-2].total:null);
+  h.push({at:Date.now(),total:total,len:len});
+  if(h.length>10) doc.scoreHistory=h.slice(-10);
+  try{ save(); }catch(e){}
+  return prev;
+}
+/* 評価シート本体。すべての分析画面から呼ばれます。 */
+function renderScoreCard(host,scores,opts){
+  opts=opts||{};
+  if(!scores||!Object.keys(scores).length) return;
+  const norm={}; Object.entries(scores).forEach(([k,v])=>{ norm[k]=Math.max(0,Math.min(100,Math.round(+v||0))); });
+  const total=overallScore(norm), G=gradeOf(total);
+  const prev=opts.doc?pushScoreHistory(opts.doc,total,opts.text||''):null;
+  const wrap=el('div','gradesheet');
+  const head=el('div','gs-head');
+  const L=el('div','gs-letter',G); L.style.background=gradeColor(G);
+  const meta=el('div','gs-meta');
+  let deltaHtml='';
+  if(prev!=null){ const df=total-prev;
+    deltaHtml='<div class="d" style="color:'+(df>0?'#2e8b57':df<0?'#b4573f':'#8792a2')+'">前回比 '+(df>0?'+':'')+df+'点'+(df>0?'（伸びています）':df<0?'（下がりました）':'（変化なし）')+'</div>'; }
+  meta.innerHTML='<div class="t">総合評価</div><div class="n">'+total+'<span style="font-size:13px;font-weight:700;color:var(--ink-3)"> / 100</span></div>'+deltaHtml;
+  head.append(L,meta); wrap.appendChild(head);
+  const wd=el('p','xsmall'); wd.style.cssText='margin:8px 0 2px;font-weight:700;color:'+gradeColor(G); wd.textContent=G+'：'+gradeWord(G);
+  wrap.appendChild(wd);
+  const rad=el('div','gs-radar'); rad.innerHTML=radarSVG(radarValues(norm),250); wrap.appendChild(rad);
+  const axr=el('div','gs-axes');
+  radarValues(norm).forEach(a=>{ const c=el('span','gs-ax'); c.innerHTML=esc(a.label)+' <b style="color:'+gradeColor(gradeOf(a.value))+'">'+gradeOf(a.value)+'</b> <span style="color:var(--ink-3);font-weight:700">'+a.value+'</span>'; axr.appendChild(c); });
+  wrap.appendChild(axr);
+  const sc=el('div'); sc.style.marginTop='10px';
+  Object.entries(norm).forEach(([k,v])=>{ const bar=el('div','scorebar'); const color=gradeColor(gradeOf(v)); bar.innerHTML='<span class="lbl">'+esc(k)+'</span><span class="track"><span style="width:'+v+'%;background:'+color+'"></span></span><span class="val" style="color:'+color+'">'+gradeOf(v)+'</span>'; sc.appendChild(bar); });
+  wrap.appendChild(sc);
+  const sl=el('div','gs-scale'); sl.innerHTML='<span>S 85〜</span><span>A 72〜</span><span>B 58〜</span><span>C 42〜</span><span>D 〜41</span>';
+  wrap.appendChild(sl);
+  wrap.appendChild(el('p','xsmall muted','※この評価はアプリ内の目安であり、合否とは無関係です。大学の評価基準とは異なります。'));
+  host.appendChild(wrap);
+}
 function renderAnalysis(b,a,text){
   b.appendChild(el('div','note','AIによる参考分析です。指摘は「なぜ・どう直すか」つき。採用はあなたが決めてください。'));
-  const sc=el('div','card tight'); sc.appendChild(el('h4',null,'観点別評価（合否予測ではありません）'));
-  Object.entries(a.scores).forEach(([k,v])=>{ const color=v>=70?'var(--ok)':v>=45?'var(--teal)':'var(--orange)'; const bar=el('div','scorebar'); bar.innerHTML=`<span class="lbl">${esc(k)}</span><span class="track"><span style="width:${v}%;background:${color}"></span></span><span class="val">${v}</span>`; sc.appendChild(bar); }); b.appendChild(sc);
+  const sc=el('div','card tight'); sc.appendChild(el('h4',null,'評価シート（合否予測ではありません）'));
+  renderScoreCard(sc,a.scores,{doc:(typeof _analyzeDoc!=='undefined'?_analyzeDoc:null),text:text}); b.appendChild(sc);
   const na=el('div','card tight');na.style.borderLeft='3px solid var(--orange)';na.innerHTML='<h4>🚩 まず直すべきこと</h4>'; const ol=el('ol');ol.style.paddingLeft='20px'; a.nextActions.forEach(x=>{const li=el('li','small');li.textContent=x;ol.appendChild(li);});na.appendChild(ol);b.appendChild(na);
+  renderHomeworkBar(b,(a.priorities&&a.priorities.length?a.priorities:a.nextActions),(typeof _analyzeDoc!=='undefined'?_analyzeDoc:null));
   a.findings.forEach(fd=>{ const det=el('details','acc'); const sev=fd.sev==='must'?'<span class="badge alert">提出前に必須</span>':fd.sev==='important'?'<span class="badge warn">重要</span>':'<span class="badge grey">要確認</span>'; det.innerHTML=`<summary>${sev} ${esc(fd.title)}</summary><div class="acc-body small"><p><b>なぜ：</b>${esc(fd.why)}</p><p><b>どう直す：</b>${esc(fd.how)}</p>${fd.q?`<div class="ai-note">🤔 ${esc(fd.q)}</div>`:''}</div>`; b.appendChild(det); });
 }
 function aiIdea(){
