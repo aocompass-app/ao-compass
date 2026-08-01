@@ -288,7 +288,7 @@ hr.sep{border:none;border-top:1px solid var(--line);margin:14px 0}
 /* =========================================================================
    AO Compass — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.01';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.02';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_KEY='aoCompass_v1';
 const LS_VER='aoCompass_ver';
 const $=s=>document.querySelector(s);
@@ -446,7 +446,9 @@ function openAuthSheet(){
    プラン（無料 / プラス）— 逆算プランの種類で課金
    ========================================================================= */
 const BILLING={
-  enabled:true,
+  /* enabled:false = 課金の仕組みを完全にオフにして、全機能を無料で開放します。
+     将来また有料にしたくなったら true に戻すだけでOK（コードはそのまま残しています）。 */
+  enabled:false,
   /* ↓ Stripeの「Payment Link」を作って、ここに貼り付けてください（空のままだと「準備中」と表示されます） */
   links:{ month:'', year:'', once:'' },
   support:''  /* 問い合わせ先メール（任意） */
@@ -462,7 +464,7 @@ function normEnt(j){ j=j||{}; return {plan:(j.plan==='pro'?'pro':'free'), until:
 function loadEnt(){ try{ const r=localStorage.getItem(LS_ENT); if(r) return normEnt(JSON.parse(r)); }catch(e){} return normEnt(null); }
 function saveEnt(e){ ENT=normEnt(e); try{ localStorage.setItem(LS_ENT,JSON.stringify(ENT)); }catch(e2){} }
 function isPro(){ if(!BILLING.enabled) return true; if(ENT.plan!=='pro') return false; if(ENT.until && ENT.until<todayISO()) return false; return true; }
-function planName(){ return isPro()?'プラス':'無料プラン'; }
+function planName(){ if(!BILLING.enabled) return 'すべての機能を無料で公開中'; return isPro()?'プラス':'無料プラン'; }
 async function refreshEntitlement(){
   if(!sb||!sbUser) return;
   try{
@@ -2880,7 +2882,7 @@ function openPlanSheet(){
     if(!S.schools.length){
       b.appendChild(el('div','note','志望校がまだ登録されていません。志望校を登録すると、その締切から逆算できます。<br>※「🌱 じっくり育成プラン」は、志望校が決まっていなくても<b>出願予定の年</b>から概算で計画を作れます。'));
       const g=el('button','btn primary block','志望校を登録する'); g.onclick=()=>{close();go('schools');}; b.appendChild(g);
-      if(!isPro()){ const u=el('button','btn teal block','🌱 じっくり育成プランについて見る'); u.style.marginTop='8px'; u.onclick=()=>{close();openBillingSheet('じっくり育成プラン');}; b.appendChild(u); return; }
+      if(BILLING.enabled&&!isPro()){ const u=el('button','btn teal block','🌱 じっくり育成プランについて見る'); u.style.marginTop='8px'; u.onclick=()=>{close();openBillingSheet('じっくり育成プラン');}; b.appendChild(u); return; }
     }
     const picker=el('div','mode-list'); b.appendChild(picker);
     const yearBox=el('div'); b.appendChild(yearBox);
