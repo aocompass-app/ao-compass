@@ -337,7 +337,7 @@ hr.sep{border:none;border-top:1px solid var(--line);margin:14px 0}
 /* =========================================================================
    AO Compass — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.11';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.02';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_BASE='aoCompass_v1';
 const LS_SCOPE_KEY='aoCompass_scope';
 /* ログイン中のデータは、アカウントごとの引き出しに入れます。
@@ -1181,6 +1181,29 @@ function schoolProgress(s){
   const cl=s.checklist||{}; const keys=['req','gpa','doc_ao','doc_katsu','eng','photo','web','fee','mail','mensetsu'];
   const done=keys.filter(k=>cl[k]).length; return Math.round(done/keys.length*100);
 }
+/* 志望校で「次にやってくる日」を選びます。
+   出願締切を過ぎても、試験日や合格発表がまだ先ならそちらを出します
+   （締切が過ぎた瞬間にカードが灰色になって、その先の予定が見えなくなるのを防ぐため）。 */
+const SCHOOL_MILESTONES=[['entryStart','エントリー開始'],['deadline','出願締切'],['examDate','試験日'],['resultDate','合格発表']];
+function nextMilestone(s){
+  if(!s) return null;
+  let best=null;
+  for(let i=0;i<SCHOOL_MILESTONES.length;i++){
+    const key=SCHOOL_MILESTONES[i][0], iso=s[key];
+    if(!iso) continue;
+    const d=daysUntil(iso);
+    if(d==null||isNaN(d)||d<0) continue;
+    if(!best||d<best.days) best={key:key,label:SCHOOL_MILESTONES[i][1],iso:iso,days:d};
+  }
+  return best;
+}
+/* 日付を「2026年9月15日（あと44日）」の形にします */
+function dateWithIn(iso){
+  if(!iso) return '—';
+  const d=daysUntil(iso);
+  if(d==null||isNaN(d)) return fmtDate(iso);
+  return fmtDate(iso)+(d>0?`（あと${d}日）`:d===0?'（今日）':'');
+}
 function countdownBox(iso){
   const AD=alertDays();
   const dd=daysUntil(iso); const box=el('div','countdown '+(dd!=null&&dd<=AD?'urgent':dd!=null&&dd<=AD*2?'soon':''));
@@ -1351,12 +1374,25 @@ function vSchools(){
   return w;
 }
 function schoolCard(s){
-  const c=el('div','card'); const dd=daysUntil(s.deadline); const pr=schoolProgress(s);
-  const ddBadge=dd==null?'<span class="badge grey">締切未設定</span>':dd<0?'<span class="badge grey">締切済</span>':`<span class="badge ${dd<=14?'alert':dd<=30?'warn':'navy'}">締切まで${dd}日</span>`;
+  const c=el('div','card'); const pr=schoolProgress(s);
+  const ms=nextMilestone(s);
+  let ddBadge, subLine='';
+  if(ms){
+    /* 合格発表は「急ぐこと」ではないので色で急かしません */
+    const cls=ms.key==='resultDate'?'navy':ms.days<=14?'alert':ms.days<=30?'warn':'navy';
+    ddBadge=`<span class="badge ${cls}">${ms.days===0?`今日が${esc(ms.label)}`:`${esc(ms.label)}まで${ms.days}日`}</span>`;
+    /* いちばん近い日が出願締切でないときは、締切の日付も小さく残します */
+    if(ms.key!=='deadline'&&s.deadline){
+      const dd=daysUntil(s.deadline);
+      subLine=`<div class="xsmall muted" style="margin-top:4px">出願締切 ${esc(fmtDate(s.deadline))}${dd!=null&&!isNaN(dd)&&dd<0?'（受付終了）':''}</div>`;
+    }
+  }else{
+    ddBadge=s.deadline?'<span class="badge grey">締切済</span>':'<span class="badge grey">締切未設定</span>';
+  }
   c.innerHTML=`<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
     <div><div style="font-weight:800">${esc(s.name)} ${priorityBadge(s.priority)}</div>
     <div class="small muted">${esc(s.faculty||'')} ${esc(s.dept||'')}</div>
-    <div style="margin-top:6px">${ddBadge} <span class="badge grey">${esc(s.method||'方式未設定')}</span></div></div>
+    <div style="margin-top:6px">${ddBadge} <span class="badge grey">${esc(s.method||'方式未設定')}</span></div>${subLine}</div>
     <div class="ring" style="--p:${pr};--c:${pr>=70?'var(--ok)':'var(--teal)'}"><i>${pr}%</i></div></div>
     <div class="prog" style="margin-top:10px"><span style="width:${pr}%"></span></div>`;
   const row=el('div','btn-row'); row.style.marginTop='12px';
@@ -1367,12 +1403,42 @@ function schoolCard(s){
 function openSchool(id){
   const s=S.schools.find(x=>x.id===id); if(!s) return;
   openSheet(s.name,(b)=>{
-    const dd=daysUntil(s.deadline);
     b.appendChild(el('div','note','⚠️ 以下は登録された情報です。出願前に大学公式サイトの最新要項・原本を必ず確認してください。'));
     const meta=el('dl','kv'); meta.style.margin='12px 0';
-    const rows=[['学部・学科',`${s.faculty||'—'} ${s.dept||''}`],['入試方式',s.method],['募集人数',s.capacity],['出願資格',s.eligibility],['評定条件',s.gpa],['英語資格など',s.english],['エントリー開始',fmtDate(s.entryStart)],['出願締切',fmtDate(s.deadline)+(dd!=null&&dd>=0?`（あと${dd}日）`:'')],['試験日',fmtDate(s.examDate)],['合格発表',fmtDate(s.resultDate)],['必要書類',s.docs],['選考方法',s.selection],['求める人物像',s.ideal],['アドミッション・ポリシー',s.policy],['志望順位',s.priority?('第'+s.priority+'志望'):'—'],['公式サイト',s.url?`<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.url)}</a>`:'—'],['調査メモ',s.notes]];
+    const rows=[['学部・学科',`${s.faculty||'—'} ${s.dept||''}`],['入試方式',s.method],['募集人数',s.capacity],['出願資格',s.eligibility],['評定条件',s.gpa],['英語資格など',s.english],['エントリー開始',dateWithIn(s.entryStart)],['出願締切',dateWithIn(s.deadline)],['試験日',dateWithIn(s.examDate)],['合格発表',dateWithIn(s.resultDate)],['必要書類',s.docs],['選考方法',s.selection],['求める人物像',s.ideal],['アドミッション・ポリシー',s.policy],['志望順位',s.priority?('第'+s.priority+'志望'):'—'],['公式サイト',s.url?`<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.url)}</a>`:'—'],['調査メモ',s.notes]];
     rows.forEach(([k,v])=>{ if(v==null||v==='')return; const dt=el('dt',null,esc(k)); const ddd=el('dd'); ddd.innerHTML=(k==='公式サイト')?v:nl2br(v); meta.append(dt,ddd); });
     b.appendChild(meta);
+    /* この大学に出す書類が、今どこまで進んでいるか。
+       「必要書類」欄などから自動で拾って、その場で書きはじめられるようにします。 */
+    try{
+      const labels=requiredDocs(s);
+      if(labels.length){
+        b.appendChild(el('hr','sep'));
+        const doneN=labels.filter(l=>docProgress(s,l).state==='done').length;
+        const hd=el('div'); hd.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:8px';
+        const ht=el('h4',null,'この大学に出す書類'); ht.style.margin='0'; hd.appendChild(ht);
+        hd.appendChild(el('span','badge '+(doneN===labels.length?'ok':'teal'),doneN+'/'+labels.length+' 完成'));
+        b.appendChild(hd);
+        b.appendChild(el('p','xsmall muted','「必要書類」欄などから自動で拾っています。実際の提出物は必ず募集要項の原本で確認してください。'));
+        const dl=el('div'); dl.setAttribute('data-reqdocs','1'); dl.style.marginTop='6px';
+        labels.forEach(label=>{
+          const p=docProgress(s,label);
+          const r=el('div','list-row'); r.style.alignItems='center'; r.setAttribute('data-reqdoc',label);
+          const cls=p.state==='done'?'ok':p.state==='wip'?'warn':'alert';
+          const st=p.state==='done'?'完成':p.state==='wip'?'書き途中':'未着手';
+          const txt=p.state==='done'?p.len+'字で完成にしています':p.state==='wip'?'下書き '+p.len+'字':p.state==='empty'?'作ったけれど、まだ白紙です':'まだ作っていません';
+          const left=el('div'); left.style.flex='1';
+          left.innerHTML='<div class="small" style="font-weight:700">'+esc(label)+'</div><div class="xsmall muted">'+esc(txt)+'</div>';
+          r.appendChild(left);
+          r.appendChild(el('span','badge '+cls,st));
+          const btn=el('button','btn sm'+(p.doc?'':' primary'),p.doc?'開く':'作る');
+          btn.onclick=()=>{ if(p.doc){ closeSheet(); go('documents'); setTimeout(()=>openDocEditor(p.doc.id),60); } else { newDocFor(s,label); } };
+          r.appendChild(btn);
+          dl.appendChild(r);
+        });
+        b.appendChild(dl);
+      }
+    }catch(e){}
     // checklist
     b.appendChild(el('hr','sep'));
     b.appendChild(el('h4',null,'出願チェックリスト')); b.appendChild(el('p','xsmall muted','要項から自動作成した想定タスクです。実際の必要書類は要項で確認してください。'));
@@ -2596,7 +2662,7 @@ function openDocEditor(id,tab){
       const row=el('div','btn-row'); row.style.marginTop='10px';
       const imp=el('button','btn sm teal','📎 ファイルを読み込む（PDF/Word/パワポ）'); imp.onclick=()=>pickFile('.pdf,.docx,.pptx,.txt,.md,.csv',(text,meta)=>{ ta.value = ta.value.trim() ? (ta.value.trim()+'\n\n'+text) : text; updateCnt(); d.body=ta.value; d.sourceFile=meta.name||d.sourceFile; touchDoc(d); toast('「'+(meta.name||'ファイル')+'」を読み込みました','ok'); });
       const saveV=el('button','btn sm','この内容をバージョン保存'); saveV.onclick=()=>{ d.body=ta.value; d.versions=d.versions||[]; d.versions.unshift({ts:Date.now(),body:ta.value}); touchDoc(d); toast('バージョンを保存しました','ok'); };
-      const dup=el('button','btn sm ghost','この下書きを複製'); dup.onclick=()=>{ const c={...d,id:uid(),title:d.title+'（複製）',versions:[],feedbacks:(d.feedbacks||[]).map(x=>({...x})),updatedAt:Date.now(),body:ta.value}; S.documents.push(c); save(); toast('複製しました','ok'); closeSheet(); go('documents'); };
+      const dup=el('button','btn sm ghost','この下書きを複製'); dup.onclick=()=>{ const c=Object.assign({},d,{id:uid(),title:d.title+'（複製）',versions:[],feedbacks:(d.feedbacks||[]).map(x=>Object.assign({},x)),updatedAt:Date.now(),body:ta.value}); S.documents.push(c); save(); toast('複製しました','ok'); closeSheet(); go('documents'); };
       row.append(imp,saveV,dup); pane.appendChild(row);
       const nb=fieldText('メモ（段落メモ・自分用）',d.notes,null,{area:true,rows:2}); nb.querySelector('textarea').onchange=e=>{d.notes=e.target.value;touchDoc(d);}; pane.appendChild(nb);
     }
