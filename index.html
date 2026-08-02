@@ -337,7 +337,7 @@ hr.sep{border:none;border-top:1px solid var(--line);margin:14px 0}
 /* =========================================================================
    AO Compass — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.11';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.02';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_BASE='aoCompass_v1';
 const LS_SCOPE_KEY='aoCompass_scope';
 /* ログイン中のデータは、アカウントごとの引き出しに入れます。
@@ -368,7 +368,7 @@ function txtSig(t){ t=String(t||''); let h=0; for(let i=0;i<t.length;i++){ h=(h*
 /* ---------------- State ---------------- */
 let S=load();
 function blankState(){ return {
-  meta:{primarySchoolId:null, demoLoaded:false},
+  meta:{primarySchoolId:null, demoLoaded:false, docTaskOff:{}},
   schools:[], activities:[], documents:[], interview:[], essays:[], tasks:[], feedback:[], certs:[],
   self:{answers:{}, tags:{strengths:[],values:[],activities:[],themes:[],future:[],episodes:[]}},
   story:{origin:'',problem:'',past:'',learned:'',wantLearn:'',whyUniv:'',afterEnroll:'',future:''},
@@ -380,6 +380,8 @@ function migrate(raw){
   const D=blankState(); if(!raw||typeof raw!=='object') return D;
   const out=Object.assign(blankState(),raw);
   out.meta=Object.assign({},D.meta,raw.meta||{});
+  /* 「自動で作らないでほしい」と言われた書類タスクの控え（古いデータには無いので必ず作る） */
+  if(!out.meta.docTaskOff||typeof out.meta.docTaskOff!=='object'||Array.isArray(out.meta.docTaskOff)) out.meta.docTaskOff={};
   out.self=Object.assign({},D.self,raw.self||{});
   out.self.answers=Object.assign({},(raw.self&&raw.self.answers)||{});
   out.self.tags=Object.assign({},D.self.tags,(raw.self&&raw.self.tags)||{});
@@ -2432,7 +2434,7 @@ function editSchool(id){
       close(); commit('保存しました');
     };
     bar.appendChild(savebtn);
-    if(id){ const del=el('button','btn danger','削除'); del.onclick=()=>{close();confirmDelete(`「${s.name}」を削除しますか？`,()=>{S.schools=S.schools.filter(x=>x.id!==id);if(S.meta.primarySchoolId===id)S.meta.primarySchoolId=S.schools[0]?.id||null;commit('削除しました');});}; bar.appendChild(del); }
+    if(id){ const del=el('button','btn danger','削除'); del.onclick=()=>{close();confirmDelete(`「${s.name}」を削除しますか？`,()=>{S.schools=S.schools.filter(x=>x.id!==id);if(S.meta.primarySchoolId===id)S.meta.primarySchoolId=(S.schools[0]&&S.schools[0].id)||null;commit('削除しました');});}; bar.appendChild(del); }
     b.appendChild(bar);
   });
 }
@@ -2596,12 +2598,12 @@ function openDocEditor(id,tab){
       const row=el('div','btn-row'); row.style.marginTop='10px';
       const imp=el('button','btn sm teal','📎 ファイルを読み込む（PDF/Word/パワポ）'); imp.onclick=()=>pickFile('.pdf,.docx,.pptx,.txt,.md,.csv',(text,meta)=>{ ta.value = ta.value.trim() ? (ta.value.trim()+'\n\n'+text) : text; updateCnt(); d.body=ta.value; d.sourceFile=meta.name||d.sourceFile; touchDoc(d); toast('「'+(meta.name||'ファイル')+'」を読み込みました','ok'); });
       const saveV=el('button','btn sm','この内容をバージョン保存'); saveV.onclick=()=>{ d.body=ta.value; d.versions=d.versions||[]; d.versions.unshift({ts:Date.now(),body:ta.value}); touchDoc(d); toast('バージョンを保存しました','ok'); };
-      const dup=el('button','btn sm ghost','この下書きを複製'); dup.onclick=()=>{ const c={...d,id:uid(),title:d.title+'（複製）',versions:[],feedbacks:(d.feedbacks||[]).map(x=>({...x})),updatedAt:Date.now(),body:ta.value}; S.documents.push(c); save(); toast('複製しました','ok'); closeSheet(); go('documents'); };
+      const dup=el('button','btn sm ghost','この下書きを複製'); dup.onclick=()=>{ const c=Object.assign({},d,{id:uid(),title:d.title+'（複製）',versions:[],feedbacks:(d.feedbacks||[]).map(x=>Object.assign({},x)),updatedAt:Date.now(),body:ta.value}); S.documents.push(c); save(); toast('複製しました','ok'); closeSheet(); go('documents'); };
       row.append(imp,saveV,dup); pane.appendChild(row);
       const nb=fieldText('メモ（段落メモ・自分用）',d.notes,null,{area:true,rows:2}); nb.querySelector('textarea').onchange=e=>{d.notes=e.target.value;touchDoc(d);}; pane.appendChild(nb);
     }
     function paneAI(){
-      d.body=$('#overlay').querySelector('textarea')?.value||d.body; // 念のため最新
+      const _ta0=$('#overlay').querySelector('textarea'); d.body=(_ta0&&_ta0.value)||d.body; // 念のため最新
       const school=S.schools.find(s=>s.id===d.schoolId);
       const a=analyzeText(d.body,{charLimit:d.charLimit,school,question:d.question,hasPolicy:!!(school&&school.policy),storyLinked:!!S.story.origin,docType:d.type});
       const aiCtx={charLimit:d.charLimit,school,question:d.question,hasPolicy:!!(school&&school.policy),docType:d.type,doc:d};
@@ -3605,6 +3607,20 @@ function docCheckup(){
   }); });
   return rows;
 }
+/* 自分で編集・削除した書類タスクは、もう自動で作り直さない（勝手に戻らないようにする） */
+function docTaskOff(k){
+  if(!k) return;
+  if(!S.meta||typeof S.meta!=='object') S.meta={};
+  if(!S.meta.docTaskOff||typeof S.meta.docTaskOff!=='object') S.meta.docTaskOff={};
+  S.meta.docTaskOff[k]=1;
+}
+function docTaskIsOff(k){ const m=S.meta&&S.meta.docTaskOff; return !!(k&&m&&typeof m==='object'&&m[k]); }
+/* 自動で作られた書類タスクを、その人のものとして切り離す（以後アプリは触らない） */
+function detachDocTask(t){
+  if(!t||!t.docauto) return;
+  docTaskOff(t.dkey);
+  t.docauto=false; t.dkey=null;
+}
 /* 未着手の書類を「緊急」タスクとして出し入れする（着手したら自動で消える） */
 function syncDocTasks(){
   if(!S||!S.tasks||!S.schools) return [];
@@ -3630,6 +3646,7 @@ function syncDocTasks(){
   });
   if(changed) S.tasks=keep;
   Object.keys(want).forEach(k=>{
+    if(docTaskIsOff(k)) return;                 /* 本人が編集・削除したものは作り直さない */
     const ex=S.tasks.filter(t=>t.docauto&&t.dkey===k)[0];
     if(ex){ if(!ex.done&&(ex.due!==want[k].due||ex.title!==want[k].title)){ ex.due=want[k].due; ex.title=want[k].title; changed=true; } return; }
     S.tasks.push({id:uid(),dkey:k,docauto:true,urgent:true,done:false,category:'書類',
@@ -3693,9 +3710,52 @@ function vTasks(){
   const open=S.tasks.filter(t=>!t.done).sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'));
   const done=S.tasks.filter(t=>t.done);
   if(!S.tasks.length){ w.appendChild(emptyState('✅','タスクがありません','「募集要項を確認」「志望理由書の初稿」「面接練習」など、やることを追加しましょう。志望校のチェックリストからも自動作成されます。',(()=>{const b=el('button','btn primary','タスクを追加');b.onclick=()=>editTask(null);return b;})())); return w; }
-  const oc=el('div','card'); oc.innerHTML='<div class="card-title"><span class="ic">📌</span><h3 data-tk="open">未完了（'+open.length+'）</h3></div>'; if(!open.length)oc.appendChild(el('p','small muted','未完了のタスクはありません。お疲れさまです！')); open.forEach(t=>oc.appendChild(taskRow(t,false))); w.appendChild(oc);
-  if(done.length){ const dc=el('details','acc'); dc.innerHTML='<summary><span data-tk="done">完了済み（'+done.length+'）</span></summary>'; const body=el('div','acc-body'); done.forEach(t=>body.appendChild(taskRow(t,false))); dc.appendChild(body); w.appendChild(dc); }
+  /* 逆算プランを作ると数十件が一気に並びます。過ぎた分・これからの分・ずっと先の分に分けて、今日やる分が埋もれないようにします */
+  const today=todayISO();
+  const over=open.filter(t=>t.due&&t.due<today);
+  const rest=open.filter(t=>!(t.due&&t.due<today));
+  const edge=isoAdd(today,TASK_HORIZON);
+  const near=rest.filter(t=>!t.due||t.due<=edge);
+  const far=rest.filter(t=>t.due&&t.due>edge);
+  if(over.length){
+    const ov=el('div','card');
+    ov.innerHTML='<div class="card-title"><span class="ic">⏰</span><h3 data-tk="over">期限を過ぎた（'+over.length+'）</h3></div>';
+    ov.appendChild(el('p','xsmall muted','日付が過ぎただけで、やること自体はなくなっていません。できるものから片づけるか、「編集」で新しい日付に置き直しましょう。'));
+    over.forEach(t=>ov.appendChild(taskRow(t,false)));
+    w.appendChild(ov);
+  }
+  const oc=el('div','card'); oc.innerHTML='<div class="card-title"><span class="ic">📌</span><h3 data-tk="open">未完了（'+rest.length+'）</h3></div>';
+  if(!rest.length)oc.appendChild(el('p','small muted',over.length?'今日から先の予定はありません。上の「期限を過ぎた」から片づけましょう。':'未完了のタスクはありません。お疲れさまです！'));
+  appendTaskGroups(oc,near);
+  if(far.length){
+    const more=el('details','acc'); more.style.marginTop='12px';
+    more.innerHTML='<summary><span class="smt">'+TASK_HORIZON+'日より先の予定（'+far.length+'件）</span></summary>';
+    const mb=el('div','acc-body'); appendTaskGroups(mb,far); more.appendChild(mb); oc.appendChild(more);
+  }
+  w.appendChild(oc);
+  if(done.length){ const dc=el('details','acc'); dc.innerHTML='<summary><span class="smt" data-tk="done">完了済み（'+done.length+'）</span></summary>'; const body=el('div','acc-body'); done.forEach(t=>body.appendChild(taskRow(t,false))); dc.appendChild(body); w.appendChild(dc); }
   return w;
+}
+/* 「これから」に出す日数。これより先はたたんでおく */
+const TASK_HORIZON=14;
+const WDAY_JP=['日','月','火','水','木','金','土'];
+/* 日付の見出し（今日・明日・あとN日） */
+function taskGroupHead(iso){
+  const h=el('div','xsmall'); h.style.cssText='font-weight:700;color:var(--navy);margin:12px 0 0';
+  if(!iso){ h.textContent='期限なし'; return h; }
+  const d=new Date(iso+'T00:00:00'), dd=daysUntil(iso);
+  const lab=dd===0?'今日':dd===1?'明日':(dd>0?'あと'+dd+'日':'期限超過');
+  h.innerHTML=esc((d.getMonth()+1)+'月'+d.getDate()+'日（'+WDAY_JP[d.getDay()]+'）')+' <span class="muted" style="font-weight:600">'+esc(lab)+'</span>';
+  return h;
+}
+/* 締切日ごとに見出しを挟んで並べる（並び順は呼ぶ側で締切の早い順にしておく） */
+function appendTaskGroups(host,list){
+  let cur=null;
+  list.forEach(t=>{
+    const k=t.due||'';
+    if(k!==cur){ cur=k; host.appendChild(taskGroupHead(t.due||null)); }
+    host.appendChild(taskRow(t,false));
+  });
 }
 function paintTaskRow(r,ck,mid,t){
   const dd=daysUntil(t.due);
@@ -3711,11 +3771,15 @@ function paintTaskRow(r,ck,mid,t){
 /* 同じタスクの行が画面に複数あっても、まとめて見た目を合わせる */
 function syncTaskRows(){ document.querySelectorAll('.list-row[data-tid]').forEach(x=>{ try{ x._paint&&x._paint(); }catch(e){} }); }
 function syncTaskCounts(){
-  const openN=S.tasks.filter(t=>!t.done).length, doneN=S.tasks.filter(t=>t.done).length;
-  const td=tasksOn(todayISO()), tdD=td.filter(t=>t.done).length;
+  const today=todayISO();
+  const openAll=S.tasks.filter(t=>!t.done), doneN=S.tasks.filter(t=>t.done).length;
+  const overN=openAll.filter(t=>t.due&&t.due<today).length;
+  const openN=openAll.length-overN;   /* 「未完了」カードは期限を過ぎた分を別枠に出しているので、その分を引く */
+  const td=tasksOn(today), tdD=td.filter(t=>t.done).length;
   document.querySelectorAll('[data-tk]').forEach(x=>{
     const k=x.getAttribute('data-tk');
     if(k==='open') x.textContent='未完了（'+openN+'）';
+    else if(k==='over') x.textContent='期限を過ぎた（'+overN+'）';
     else if(k==='done') x.textContent='完了済み（'+doneN+'）';
     else if(k==='today'){ x.textContent=tdD+'/'+td.length+' 完了'; x.className='badge '+(td.length&&tdD===td.length?'ok':'teal'); }
   });
@@ -3779,8 +3843,11 @@ function editTask(id){
     const f={}; f.title=fieldText('タスク名 *',t.title,null,{placeholder:'例：志望理由書の初稿を作る'}); b.appendChild(f.title);
     const r=el('div','row2'); f.due=fieldText('締切日',t.due,null,{type:'date'}); f.cat=fieldText('カテゴリー',t.category,'例：書類 / 面接'); r.append(f.due,f.cat); b.appendChild(r);
     f.school=fieldSelect('関連する志望校',t.schoolId,[{value:'',label:'—'},...S.schools.map(s=>({value:s.id,label:s.name}))]); b.appendChild(f.school);
-    const sv=el('button','btn primary','保存'); sv.onclick=()=>{ if(!f.title.get()){toast('タスク名を入力してください','warn');return;} if(id){t.title=f.title.get();t.due=f.due.get();t.category=f.cat.get();t.schoolId=f.school.get()||null;} else S.tasks.push({id:uid(),title:f.title.get(),due:f.due.get(),category:f.cat.get(),schoolId:f.school.get()||null,done:false}); close(); commit('保存しました'); }; b.appendChild(sv);
-    if(id){ const del=el('button','btn danger','削除');del.style.marginLeft='6px'; del.onclick=()=>{close();confirmDelete('このタスクを削除しますか？',()=>{S.tasks=S.tasks.filter(x=>x.id!==id);commit('削除しました');});}; b.appendChild(del); }
+    if(t&&t.docauto) b.appendChild(el('p','xsmall muted','※ これは必要書類から自動で作られたタスクです。日付や名前を変えて保存すると、以後はあなたが決めた内容のまま残ります（自動で書き換わりません）。'));
+    const sv=el('button','btn primary','保存'); sv.onclick=()=>{ if(!f.title.get()){toast('タスク名を入力してください','warn');return;} if(id){t.title=f.title.get();t.due=f.due.get();t.category=f.cat.get();t.schoolId=f.school.get()||null;detachDocTask(t);} else S.tasks.push({id:uid(),title:f.title.get(),due:f.due.get(),category:f.cat.get(),schoolId:f.school.get()||null,done:false}); close(); commit('保存しました'); }; b.appendChild(sv);
+    if(id){ const del=el('button','btn danger','削除');del.style.marginLeft='6px';
+      const dmsg=(t&&t.docauto)?'このタスクを削除しますか？必要書類から自動で作られたタスクなので、削除すると次からは作り直しません。書類そのものは「提出書類」画面でいつでも確認できます。':'このタスクを削除しますか？';
+      del.onclick=()=>{close();confirmDelete(dmsg,()=>{ if(t&&t.docauto) docTaskOff(t.dkey); S.tasks=S.tasks.filter(x=>x.id!==id);commit('削除しました');});}; b.appendChild(del); }
   });
 }
 
@@ -4505,7 +4572,7 @@ function aiOutline(){
     b.appendChild(el('p','small muted','設問・文字数・志望校・使う活動を選ぶと、方向性の異なる構成案を提示します。'));
     const sel=fieldSelect('志望校',S.meta.primarySchoolId,[{value:'',label:'—'},...S.schools.map(s=>({value:s.id,label:s.name+' '+(s.faculty||'')}))]); b.appendChild(sel);
     const qf=fieldText('設問','',null,{area:true,rows:2}); b.appendChild(qf);
-    const lf=fieldText('文字数',S.schools.find(s=>s.id===S.meta.primarySchoolId)?.docs?'':'',null,{type:'number',placeholder:'例：1200'}); b.appendChild(lf);
+    const lf=fieldText('文字数','',null,{type:'number',placeholder:'例：1200'}); b.appendChild(lf);
     b.appendChild(el('p','small','使う活動（任意）：')); const chosen=[]; const box=el('div');box.style.cssText='display:flex;flex-wrap:wrap;gap:6px'; S.activities.forEach(a=>{const c=el('span','chip click',esc(a.name.slice(0,14)));c.onclick=()=>{const i=chosen.indexOf(a.id);if(i>=0){chosen.splice(i,1);c.classList.remove('sel');}else{chosen.push(a.id);c.classList.add('sel');}};box.appendChild(c);}); if(!S.activities.length)box.appendChild(el('span','xsmall muted','（活動を登録すると選べます）')); b.appendChild(box);
     const run=el('button','btn primary block',aiReady()?('🤖 '+aiLabel()+'で構成案を作る'):'構成案を作る（オフライン）'); run.style.marginTop='10px'; run.onclick=()=>{ const limit=+lf.get()||1000; const school=S.schools.find(s=>s.id===sel.get()); const acts=S.activities.filter(a=>chosen.includes(a.id)); if(aiReady()){ aiTextSheet('🧱 構成案','設問・志望校・あなたの活動をもとに、方向性の違う構成案をAIが提示します。文章は書かず骨組みだけ。',()=>runOutlineAI(limit,school,acts,qf.get())); } else { openSheet('🧱 構成案（3案）',(bb)=>{ buildOutlines(bb,limit,school,acts,qf.get()); }); } };
     b.appendChild(run);
