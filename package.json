@@ -1,0 +1,23 @@
+{
+  "name": "ao-compass",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "node tests/smoke.mjs && node tests/self-answer.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aocompass-app/ao-compass.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/aocompass-app/ao-compass/issues"
+  },
+  "homepage": "https://github.com/aocompass-app/ao-compass#readme",
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
+}

@@ -337,7 +337,7 @@ hr.sep{border:none;border-top:1px solid var(--line);margin:14px 0}
 /* =========================================================================
    AO Compass — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.11';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.02';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_BASE='aoCompass_v1';
 const LS_SCOPE_KEY='aoCompass_scope';
 /* ログイン中のデータは、アカウントごとの引き出しに入れます。
@@ -3034,8 +3034,12 @@ function vSelf(){
     det.innerHTML=`<summary><span class="smt">${badge()}<span>${esc(q.q)}</span></span></summary>`; const body=el('div','acc-body');
     const ta=el('textarea','input'); ta.rows=4; ta.value=S.self.answers[q.id]||''; ta.setAttribute('aria-label',q.q);
     body.appendChild(ta);
+    /* いま何字書けているかをその場で表示（志望理由書に転用するときの目安になります） */
+    const cnt=el('div','counter'); const updCnt=()=>{ cnt.textContent=countJP(ta.value)+'字'; };
+    updCnt(); ta.addEventListener('input',updCnt); body.appendChild(cnt);
     const st=saveStatusEl();
-    const refresh=()=>{ const sm=det.querySelector('summary'); if(sm) sm.innerHTML=badge()+' '+esc(q.q); drawProg(); };
+    /* 見出しは初期描画と同じ形（.smt で包む）に作り直す。包み忘れると質問文が右に寄ります */
+    const refresh=()=>{ const sm=det.querySelector('summary'); if(sm) sm.innerHTML='<span class="smt">'+badge()+'<span>'+esc(q.q)+'</span></span>'; drawProg(); };
     const doSave=bindAutosave(ta,'self:'+q.id,v=>{ S.self.answers[q.id]=v.trim(); },st,{delay:600,after:refresh});
     const row=el('div','save-row');
     const sb=el('button','btn sm primary','💾 保存する'); sb.onclick=()=>{ doSave(); toast('保存しました','ok'); };
