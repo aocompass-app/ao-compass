@@ -1,0 +1,171 @@
+# AO Compass 自動改善
+# 毎時、アプリを少しずつ良くする案を出して、安全なものだけ実装し、
+# テストを通してから「プルリクエスト（変更の提案）」を作ります。
+# main には直接入りません。Merge を押して初めて公開されます。
+name: AO Compass 自動改善
+
+on:
+  schedule:
+    - cron: "51 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ao-improve
+  cancel-in-progress: false
+
+jobs:
+  improve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # 案が尽きてきたら 1日1回だけ動かすモードに落とす
+      - id: gate
+        run: |
+          MODE=hourly
+          if [ -f .claude/improve-state.json ] && grep -q '"mode"[[:space:]]*:[[:space:]]*"daily"' .claude/improve-state.json; then
+            MODE=daily
+          fi
+          RUN=yes
+          if [ "$MODE" = "daily" ] && [ "${{ github.event_name }}" = "schedule" ] && [ "$(date -u +%H)" != "09" ]; then
+            RUN=no
+          fi
+          echo "run=$RUN" >> "$GITHUB_OUTPUT"
+          echo "hour=$(date -u +%H)" >> "$GITHUB_OUTPUT"
+          echo "モード=$MODE 実行=$RUN"
+
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.run == 'yes'
+        with:
+          node-version: '22'
+
+      - name: テスト用ブラウザを用意
+        if: steps.gate.outputs.run == 'yes'
+        run: |
+          npm init -y >/dev/null 2>&1 || true
+          npm i -D playwright >/dev/null
+          npx playwright install --with-deps chromium
+
+      - uses: anthropics/claude-code-action@v1
+        if: steps.gate.outputs.run == 'yes'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AO_HOUR: ${{ steps.gate.outputs.hour }}
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          claude_args: |
+            --max-turns 60
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash"
+          prompt: |
+            あなたはこのリポジトリの開発者です。質問はせず、最後まで自分で進めてください。
+
+            # このアプリについて
+
+            `index.html` 1ファイルだけで動く、日本の総合型選抜（AO入試）向けの受験生用アプリです。
+            GitHub Pages で公開されていて、実際の高校生が今この瞬間に使っています。
+            壊さないことが最優先です。
+
+            # 絶対に守ること
+
+            - 単一ファイル。CSSもJSも `index.html` の中に書く。外部ファイルを増やさない（テストは別）。
+            - ビルド無し・バニラJS。npmパッケージやフレームワークを本体に持ち込まない。
+            - 保存は localStorage。キーは `aoCompass_v1`（ログイン時は `aoCompass_v1__u_<userId>`）。
+            - 古いiOS Safariで動くこと。後読み正規表現 `(?<=...)` とオブジェクトスプレッド `{...a}` は使わない。
+            - 免責表示を消さない。「入試情報は必ず大学公式サイトの最新の募集要項・原本を確認してください」の帯は常時表示。
+            - AIに嘘をつかせない。生徒が経験していないエピソードを作らせない・勝手に補完させない。
+              合格を保証する言い回しを出さない。
+            - APIキーは利用者自身が入力する方式のまま。開発側のキーをコードに埋め込まない。
+              バックアップの書き出しにもキーを含めない。
+            - 既存データを壊さない。データ構造を変えるときは `migrate(raw)` に移行処理を足し、
+              古いデータでも全画面が開くことを確認する。
+
+            # コードの地図
+
+            - ルート要素は `#root`（`#app` ではない）
+            - 画面切り替えは `go(view)` → `render()`
+            - 状態はグローバルの `S`（`S.schools` / `S.documents` / `S.tasks` / `S.activities`）
+            - 保存は `save()`、画面を作り直すのは `commit(msg)`
+            - 志望校の詳細シートは `openSchool(id)`、書類エディタは `openDocEditor(id)`
+            - 部品は `el(tag,class,html)` / `esc()` / `fieldText` / `fieldSelect` / `pageHead` / `tgCard` / `confirmDelete`
+            - 便利関数は `countJP` `fmtDate` `isoAdd` `todayISO` `daysUntil` `uid` `shortName` `schoolName` `tasksOn`
+            - 必要書類まわりは `requiredDocs` / `docProgress` / `docCheckup` / `syncDocTasks` / `docCheckCard`
+            - バージョンは `const APP_VER='YYYY.MM.DD'`
+
+            # やりがちな失敗（再発させないこと）
+
+            - チェックを押すと下の行にチェックが入る：完了時に文字数が変わって行の高さが縮み、
+              下の行がずり上がるのが原因。バッジは消さずに色だけ変える。
+              押した行だけをその場で描き直す（チェックの処理の中で `render()` を呼ばない）。
+            - アコーディオンの見出しが右に寄る：`.acc>summary` は `display:flex;justify-content:space-between`。
+              見出しは `<span class="smt">` で必ず包む。
+            - 閉じた `<details>` の中は `innerText` に出てこない。テストでは `d.open=true` にしてから読む。
+
+            # 今回やること
+
+            ## 1. 担当分野を決める
+            環境変数 AO_HOUR（0〜23）を 7 で割った余りで、今回見る場所を決めます。
+            0=ホーム 1=志望校 2=提出書類 3=面接・小論文 4=タスク・締切 5=自己分析 6=設定・操作性
+            毎回ちがう場所を見ることで、同じ改善を繰り返さないようにします。
+            `.claude/improve-log.md` があれば読み、過去にやった改善・見送った案と重複させないこと。
+
+            ## 2. 案を出して選ぶ
+            担当分野について、受験生が実際に困る点から改善案を5つ出す。
+            「使いやすくする」のような感想は禁止。どの関数のどこをどう変えるかまで具体的に書く。
+            そのうちリスクが低く効果が高いものを1〜2個だけ選ぶ。
+            データ構造の作り直し・画面の作り直し・外部ライブラリ追加は選ばない。
+
+            ## 3. 実装する
+            `index.html` を Edit でピンポイントに直す。全文の書き直しはしない。
+            `const APP_VER` を当日の日付（YYYY.MM.DD）に上げる。同じ日に2回目なら末尾に -2。
+
+            ## 4. 検証する（省略不可）
+            `tests/smoke.mjs` がまだ無ければ、最初に作ってください。playwright を使い、
+            `file://` で `index.html` を 390x844 で開いて、少なくとも次を確かめる内容にします。
+            初回の案内は `window.__AO_NO_ONBOARD=1;` を addInitScript で入れて出さないようにします。
+
+            - ホーム/志望校/提出書類/面接/タスク/自己分析/設定 の7画面が中身つきで開き、JSエラーが出ない
+            - 必要書類に3件書いた志望校を入れたら `requiredDocs` が3件返り、緊急タスクも3件できる
+            - タスクのチェックを同じ座標で4回押しても、押した行以外の done が変わらず、行の高さも変わらない
+            - `migrate()` に古い形のデータを通しても全画面が開く
+            - 「募集要項」の免責の帯が残っていて、`APP_VER` が `YYYY.MM.DD` の形
+
+            そのうえで毎回:
+            - 構文確認をする
+            - `node tests/smoke.mjs` を通す
+            - 今回変えた挙動そのものを確かめるテストを `tests/` に1本足して通す
+            赤いまま終わらせない。直せない変更は取り消して、残りだけ残す。
+
+            ## 5. 記録する
+            `.claude/improve-log.md` の末尾に、日付・担当分野・入れた改善・見送った案を追記する。
+            ファイルが無ければ作る。
+
+            ## 6. 提案として出す（重要）
+            `git push` で main に直接入れてはいけません。実際の高校生が使っています。
+            かならず次の形で出してください。
+
+            ```
+            git config user.name "AO Compass Bot"
+            git config user.email "bot@users.noreply.github.com"
+            git switch -c improve/$(date -u +%Y%m%d-%H%M)
+            git add -A
+            git commit -m "自動改善: <入れた内容を1行で>"
+            git push -u origin HEAD
+            gh pr create --title "自動改善 <日付> <担当分野>" --body "<下記の本文>"
+            ```
+
+            プルリクエストの本文は、専門用語を使わない日本語で次の3つを書きます。
+            - 今回入れた改善（各2〜3行。受験生にとって何が変わるか）
+            - 見送った案と理由（各1行）
+            - テスト結果（何件通ったか）
+
+            ## 案が尽きてきたとき
+            5案すべてが「入れるほどではない」と判断した場合は、`index.html` は変えずに
+            `.claude/improve-state.json` を `{"mode":"daily"}` の内容にして、
+            その変更だけのプルリクエストを作り、本文に理由を書いてください。
+            毎時から1日1回に落ちます。頻度を上げ直すことはしないでください。
