@@ -168,8 +168,8 @@ textarea.input{resize:vertical;min-height:80px;line-height:1.7}
 /* ---------- Lists ---------- */
 .list-row{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-top:1px solid var(--line)}
 .list-row:first-child{border-top:none}
-.check{width:22px;height:22px;border-radius:7px;border:2px solid #cbd3dc;flex:none;display:grid;place-items:center;cursor:pointer;background:#fff;margin-top:2px;position:relative;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
-.check::before{content:"";position:absolute;left:-9px;right:-9px;top:-9px;bottom:-9px;border-radius:12px}
+.check{width:22px;height:22px;border-radius:7px;border:2px solid #cbd3dc;flex:none;display:grid;place-items:center;cursor:pointer;background:#fff;margin-top:0;position:relative;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.checkhit{flex:none;display:flex;align-items:flex-start;padding:3px 7px 9px 0;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .check:active{transform:scale(.92)}
 .check.on{background:var(--teal);border-color:var(--teal);color:#fff}
 .strike{text-decoration:line-through;color:var(--ink-3)}
@@ -337,7 +337,7 @@ hr.sep{border:none;border-top:1px solid var(--line);margin:14px 0}
 /* =========================================================================
    AO Compass — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.10';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.11';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_BASE='aoCompass_v1';
 const LS_SCOPE_KEY='aoCompass_scope';
 /* ログイン中のデータは、アカウントごとの引き出しに入れます。
@@ -1379,7 +1379,7 @@ function openSchool(id){
     const items=[['req','募集要項を最新版で確認'],['gpa','評定条件を満たしているか確認'],['doc_ao','志望理由書／自己推薦書を作成'],['doc_katsu','活動報告書を完成'],['eng','英語資格の証明書を準備'],['photo','証明写真を準備'],['web','Web出願を完了'],['fee','受験料を支払う'],['mail','必要書類を郵送／提出'],['mensetsu','面接・プレゼン資料を提出']];
     s.checklist=s.checklist||{};
     const cl=el('div'); cl.style.marginTop='6px';
-    items.forEach(([k,label])=>{ const r=el('div','list-row'); const ck=el('div','check'+(s.checklist[k]?' on':'')); ck.setAttribute('role','checkbox'); ck.setAttribute('tabindex','0'); ck.setAttribute('aria-checked',!!s.checklist[k]); ck.innerHTML=s.checklist[k]?'✓':''; const toggle=()=>{ s.checklist[k]=!s.checklist[k]; ck.classList.toggle('on'); ck.innerHTML=s.checklist[k]?'✓':''; ck.setAttribute('aria-checked',!!s.checklist[k]); save(); }; ck.onclick=toggle; ck.onkeydown=e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();toggle();}}; r.appendChild(ck); r.appendChild(el('div','small',esc(label))); cl.appendChild(r); });
+    items.forEach(([k,label])=>{ const r=el('div','list-row'); const ck=el('div','check'+(s.checklist[k]?' on':'')); ck.setAttribute('role','checkbox'); ck.setAttribute('tabindex','0'); ck.setAttribute('aria-checked',!!s.checklist[k]); ck.innerHTML=s.checklist[k]?'✓':''; const toggle=()=>{ s.checklist[k]=!s.checklist[k]; ck.classList.toggle('on'); ck.innerHTML=s.checklist[k]?'✓':''; ck.setAttribute('aria-checked',!!s.checklist[k]); save(); }; const hit=el('div','checkhit'); hit.appendChild(ck); hit.onclick=e=>{e.preventDefault();e.stopPropagation();if(!tapOK(r))return;toggle();}; ck.onkeydown=e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();toggle();}}; r.appendChild(hit); r.appendChild(el('div','small',esc(label))); cl.appendChild(r); });
     b.appendChild(cl);
     const setP=el('button','btn sm block',(S.meta.primarySchoolId===s.id)?'★ 第一志望に設定済み':'☆ 第一志望に設定'); setP.style.marginTop='12px';
     setP.onclick=()=>{ S.meta.primarySchoolId=s.id; s.priority=1; commit('第一志望に設定しました'); closeSheet(); };
@@ -3540,13 +3540,49 @@ const REQ_DOC_PATTERNS=[
   ['エントリーシート',/エントリーシート|エントリーカード/],
   ['プレゼン資料',/プレゼン|発表資料|口頭発表|スライド/]
 ];
-/* 学校ごとに「本人が書く必要のある書類」を推定する（調査書・推薦書など先生が書くものは除く） */
+/* 本人が書くものではない（先生・役所・機関が用意する）ものは除く */
+const DOC_SKIP=/調査書|推薦(書|状|文)|評価書|成績証明|卒業(見込)?証明|在学証明|修了証明|証明写真|顔写真|写真|住民票|戸籍|健康診断|同意書|承諾書|誓約書|保護者|振込|検定料|受験料|入学金|受験票|受検票|志願票|願書|出願票|封筒|切手|返信用|宛名|ラベル|英語資格|外部試験|外部検定|資格・?検定|検定試験|スコア|成績表|TOEFL|TOEIC|IELTS|英検|GTEC|TEAP|ケンブリッジ|証明書|コピー|写し|返送|受験料|手数料|通知書|合格通知/i;
+/* 「①志望理由書（800字以内）2部」→「志望理由書」 */
+function normDocName(x){
+  var v=String(x||'')
+    .replace(/[（(【\[][^）)】\]]*[）)】\]]/g,'')
+    .replace(/^[\s\u30000-9０-９①-⑳ⅰ-ⅹA-Za-zＡ-Ｚ.．,、・:：\-ー–—>＞●○◎■□☆★*＊\)）\]］]+/,'')
+    .replace(/[\s\u3000]+/g,'')
+    .replace(/(各)?[0-9０-９]+[部通枚](提出|必要|必須)?$/,'')
+    .replace(/(の提出|を提出|提出|が必要|必要|必須|など|等|以上)$/,'');
+  return v.trim();
+}
+/* 表記ゆれを代表的な名前にそろえる（同じ書類が二重に出ないように） */
+function canonDoc(v){
+  for(var i=0;i<REQ_DOC_PATTERNS.length;i++){ if(REQ_DOC_PATTERNS[i][1].test(v)) return REQ_DOC_PATTERNS[i][0]; }
+  return v;
+}
+/* よく知られた「本人が書く書類」かどうか（自己推薦書のように除外語と字が重なるものを守る） */
+function knownDoc(v){
+  for(var i=0;i<REQ_DOC_PATTERNS.length;i++){ if(REQ_DOC_PATTERNS[i][1].test(v)) return true; }
+  return false;
+}
+function splitDocs(txt){
+  return String(txt||'').split(/[、,，・･\/／\n\r\t;；|｜＋+\s\u3000]+|および|及び|ならびに|並びに/);
+}
+/* 学校ごとに「本人が書く必要のある書類」を洗い出す（欄に書いたものは全部見る） */
 function requiredDocs(s){
   if(!s) return [];
-  const txt=[s.docs,s.selection,s.method,s.notes,s.eligibility].filter(Boolean).join(' ');
   const out=[]; const seen={};
-  REQ_DOC_PATTERNS.forEach(pair=>{ if(pair[1].test(txt)&&!seen[pair[0]]){ seen[pair[0]]=1; out.push(pair[0]); } });
-  if(!seen['志望理由書']){ out.unshift('志望理由書'); }   /* 総合型選抜の中心。要項未入力でも必ず見る */
+  const push=function(v){
+    if(!v) return;
+    if(v.length<2||v.length>24) return;
+    const c=canonDoc(v);
+    /* 「自己推薦書」のように、よく知られた書類名なら除外語に当たっても必ず残す */
+    if(!knownDoc(v) && DOC_SKIP.test(v)) return;
+    if(!/[書票文案資料シート論文計画報告記述作文エッセイレポートプレゼンスライドカード]/.test(c)) return;  /* 「面接」「A4」などは書類ではない */
+    if(seen[c]) return; seen[c]=1; out.push(c);
+  };
+  splitDocs(s.docs).forEach(function(x){ push(normDocName(x)); });          /* 必要書類の欄はひとつ残らず */
+  const txt=[s.docs,s.selection,s.method,s.notes,s.eligibility].filter(Boolean).join(' ');
+  REQ_DOC_PATTERNS.forEach(function(pair){ if(pair[1].test(txt)) push(pair[0]); });   /* 文章の中に混ざっていても拾う */
+  if(!seen['志望理由書']){ out.push('志望理由書'); seen['志望理由書']=1; }   /* 総合型選抜の中心。要項未入力でも必ず見る */
+  const i=out.indexOf('志望理由書'); if(i>0){ out.splice(i,1); out.unshift('志望理由書'); }   /* 中心の書類を先頭に */
   return out;
 }
 /* その書類が今どこまで進んでいるか */
@@ -3664,9 +3700,12 @@ function vTasks(){
 function paintTaskRow(r,ck,mid,t){
   const dd=daysUntil(t.due);
   ck.className='check'+(t.done?' on':''); ck.innerHTML=t.done?'✓':''; ck.setAttribute('aria-checked',!!t.done);
-  const ddBadge=t.done?'':dd==null?'':dd<0?'<span class="badge alert">期限超過</span>':dd===0?'<span class="badge warn">今日</span>':dd<=3?`<span class="badge warn">あと${dd}日</span>`:`<span class="badge grey">あと${dd}日</span>`;
-  const hwBadge=t.hw?'<span class="badge teal">📌 宿題</span> ':'';
-  const urBadge=(t.urgent&&!t.done)?'<span class="badge alert">緊急</span> ':'';
+  /* 完了してもバッジの文字数を変えない＝行の高さが変わらない。押した瞬間に下の行がずり上がるのを防ぐ */
+  const ddText=dd==null?'':dd<0?'期限超過':dd===0?'今日':'あと'+dd+'日';
+  const ddCls=t.done?'grey':(dd==null?'grey':dd<0?'alert':dd<=3?'warn':'grey');
+  const ddBadge=ddText?'<span class="badge '+ddCls+'">'+ddText+'</span>':'';
+  const hwBadge=t.hw?'<span class="badge '+(t.done?'grey':'teal')+'">📌 宿題</span> ':'';
+  const urBadge=t.urgent?'<span class="badge '+(t.done?'grey':'alert')+'">緊急</span> ':'';
   mid.innerHTML=`<div class="${t.done?'strike small':'small'}" style="font-weight:600">${urBadge}${hwBadge}${esc(t.title)}</div><div class="xsmall muted">${t.due?fmtDate(t.due):'期限なし'} ${ddBadge} ${t.category?'・'+esc(t.category):''} ${t.schoolId?'・'+esc(schoolName(t.schoolId)):''}</div>`;
 }
 /* 同じタスクの行が画面に複数あっても、まとめて見た目を合わせる */
@@ -3681,16 +3720,21 @@ function syncTaskCounts(){
     else if(k==='today'){ x.textContent=tdD+'/'+td.length+' 完了'; x.className='badge '+(td.length&&tdD===td.length?'ok':'teal'); }
   });
 }
+/* 指がすべった直後の二度押しで、別の行に入ってしまうのを防ぐ */
+let _tapAt=0,_tapEl=null;
+function tapOK(node){ const n=Date.now(); if(_tapEl&&_tapEl!==node&&n-_tapAt<220) return false; _tapAt=n; _tapEl=node; return true; }
+function checkHit(ck){ const h=el('div','checkhit'); h.appendChild(ck); return h; }
 function taskRow(t,compact){
   const r=el('div','list-row'); r.setAttribute('data-tid',t.id||'');
   const ck=el('div','check'); ck.setAttribute('role','checkbox'); ck.setAttribute('tabindex','0');
+  const hit=checkHit(ck);
   const mid=el('div'); mid.style.flex='1';
   r._paint=()=>paintTaskRow(r,ck,mid,t);
   /* 押した行がその場で変わるだけ。一覧を並べ替えないので、連続で押しても隣の欄に入らない */
-  const toggle=()=>{ t.done=!t.done; if(t.done)t.doneAt=Date.now(); save(); syncTaskRows(); syncTaskCounts(); };
-  ck.onclick=e=>{ e.preventDefault(); e.stopPropagation(); toggle(); };
+  const toggle=()=>{ if(!tapOK(r))return; t.done=!t.done; if(t.done)t.doneAt=Date.now(); save(); syncTaskRows(); syncTaskCounts(); };
+  hit.onclick=e=>{ e.preventDefault(); e.stopPropagation(); toggle(); };
   ck.onkeydown=e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();toggle();}};
-  r.appendChild(ck); r.appendChild(mid); paintTaskRow(r,ck,mid,t);
+  r.appendChild(hit); r.appendChild(mid); paintTaskRow(r,ck,mid,t);
   if(!compact){ const ed=el('button','btn sm ghost','編集'); ed.onclick=()=>editTask(t.id); r.appendChild(ed); }
   return r;
 }
