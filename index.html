@@ -337,7 +337,7 @@ hr.sep{border:none;border-top:1px solid var(--line);margin:14px 0}
 /* =========================================================================
    AO Compass — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.11';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.02';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_BASE='aoCompass_v1';
 const LS_SCOPE_KEY='aoCompass_scope';
 /* ログイン中のデータは、アカウントごとの引き出しに入れます。
@@ -2903,10 +2903,10 @@ function vSettings(){
   const row=el('div','btn-row'); row.style.marginTop='10px';
   const demo=el('button','btn','デモデータを読み込む'); demo.onclick=()=>confirmDelete('現在のデータを消してデモデータを読み込みます。よろしいですか？',loadDemo);
   const exp=el('button','btn ghost','バックアップ書き出し'); exp.onclick=exportData;
-  const imp=el('button','btn ghost','読み込み'); imp.onclick=importData;
+  const imp=el('button','btn ghost','バックアップ読み込み'); imp.onclick=importData;
   const del=el('button','btn danger','すべてのデータを削除'); del.onclick=()=>confirmDelete('すべてのデータ（志望校・書類・自己分析など）を完全に削除します。取り消せません。',()=>{S=blankState();S.profile.onboarded=true;save();toast('削除しました','ok');go('home');});
   row.append(demo,exp,imp,del); dc.appendChild(row);
-  dc.appendChild(el('p','xsmall muted','※ バックアップにはAIのAPIキーは含まれません（安全のため）。'));
+  dc.appendChild(el('p','xsmall muted','※ バックアップにはAIのAPIキーは含まれません（安全のため）。書き出したファイルには日付と時刻が入ります。<br>※「バックアップ読み込み」は、いまのデータに<b>足す</b>のではなく<b>置き換え</b>ます。読み込む前に中身を確認する画面が出ます。'));
   w.appendChild(dc);
 
   w.appendChild(privacyNote());
@@ -3003,8 +3003,81 @@ function vMore(){
   const about=el('div','card tight'); about.innerHTML='<p class="xsmall muted">AO Compass（試作版）｜総合型選抜の伴走アプリ。AIは合否を判断せず、あなたの経験や実績を捏造しません。最終的な提出内容は必ずご自身で確認し、先生・指導者にも確認してもらいましょう。デモの大学名・要項はすべて架空です。</p>'; w.appendChild(about);
   return w;
 }
-function exportData(){ const blob=new Blob([JSON.stringify(S,null,2)],{type:'application/json'}); const a=el('a'); a.href=URL.createObjectURL(blob); a.download='ao-compass-backup.json'; a.click(); toast('バックアップを書き出しました','ok'); }
-function importData(){ const inp=el('input'); inp.type='file'; inp.accept='.json'; inp.onchange=e=>{ const file=e.target.files[0]; if(!file)return; const rd=new FileReader(); rd.onload=()=>{ try{ S=migrate(JSON.parse(rd.result)); save(); toast('読み込みました','ok'); go('home'); }catch(err){ toast('ファイルを読み込めませんでした','err'); } }; rd.readAsText(file); }; inp.click(); }
+/* 書き出したファイルに、いつ書き出したかが分かる名前を付けます。
+   何度も書き出したときに「backup(1).json」「backup(2).json」だらけになって、
+   どれが最新なのか分からなくなるのを防ぎます */
+function backupFileName(){
+  const d=new Date(), p=function(n){ return String(n).padStart(2,'0'); };
+  return 'ao-compass-backup-'+d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'-'+p(d.getHours())+p(d.getMinutes())+'.json';
+}
+function exportData(){
+  const blob=new Blob([JSON.stringify(S,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=el('a'); a.href=url; a.download=backupFileName(); a.click();
+  setTimeout(function(){ try{ URL.revokeObjectURL(url); }catch(e){} },2000);
+  toast('バックアップを書き出しました','ok');
+}
+/* 読み込もうとしているファイルが、AO Compass のバックアップかどうかを確かめます。
+   別のアプリのJSONやこわれたファイルをそのまま取り込むと、
+   中身が空のまま上書きされて今までの記録が消えてしまうため、必ずここで止めます */
+const BK_LISTS=['schools','activities','documents','interview','essays','tasks','feedback','certs'];
+function looksLikeBackup(o){
+  if(!o||typeof o!=='object'||Array.isArray(o)) return false;
+  if(BK_LISTS.some(function(k){ return Array.isArray(o[k]); })) return true;
+  return ['self','story','profile','prefs','meta'].some(function(k){ return o[k]&&typeof o[k]==='object'&&!Array.isArray(o[k]); });
+}
+/* 中身を数えて「何が入っているファイルか」を、読み込む前に見せます */
+function backupSummary(o){
+  const L=[['schools','志望校'],['documents','提出書類'],['tasks','タスク'],['activities','活動実績'],['essays','小論文'],['interview','面接'],['certs','資格・検定']];
+  const parts=[];
+  L.forEach(function(p){ const n=(o&&Array.isArray(o[p[0]]))?o[p[0]].length:0; if(n) parts.push(p[1]+' '+n+'件'); });
+  const nm=o&&o.profile&&String(o.profile.name||'').trim();
+  if(nm) parts.unshift('名前「'+nm+'」');
+  return parts.length?parts.join(' ／ '):'記録はまだ入っていません';
+}
+/* 上書きする前に、今のデータと読み込むファイルの中身を並べて確認してもらいます */
+function confirmImport(data,fname){
+  openSheet('この内容で読み込みますか？',function(b,close){
+    const box=function(ttl,txt){ const c=el('div','card tight'); c.style.marginBottom='8px';
+      c.innerHTML='<div class="small" style="font-weight:800;color:var(--navy)">'+esc(ttl)+'</div><p class="xsmall muted" style="margin:3px 0 0">'+txt+'</p>'; return c; };
+    b.appendChild(box('いまアプリに入っているデータ',esc(backupSummary(S))));
+    b.appendChild(box('読み込むファイル',esc(fname||'バックアップ')+'<br>'+esc(backupSummary(data))));
+    b.appendChild(el('div','note','⚠️ 読み込むと、いま入っているデータは<b>すべてこのファイルの内容に置き換わります</b>（足し算ではありません）。あとから元に戻せないので、消えては困るものがあるときは、先に下の「今のデータを書き出す」を押してください。'));
+    const bk=el('button','btn ghost sm block','⬇️ 先に今のデータを書き出す'); bk.style.marginTop='10px';
+    bk.onclick=function(){ exportData(); };
+    b.appendChild(bk);
+    const row=el('div','btn-row'); row.style.marginTop='8px';
+    const cc=el('button','btn','キャンセル'); cc.onclick=close;
+    const ok=el('button','btn danger','置き換えて読み込む');
+    ok.onclick=function(){ close(); S=migrate(data); save(); toast('読み込みました','ok'); go('home'); };
+    row.append(cc,ok); b.appendChild(row);
+  });
+}
+function importData(){
+  const inp=el('input'); inp.type='file'; inp.accept='.json,application/json';
+  inp.onchange=function(e){
+    const file=(e.target.files||[])[0]; if(!file) return;
+    const rd=new FileReader();
+    rd.onerror=function(){ toast('ファイルを読み込めませんでした','err'); };
+    rd.onload=function(){
+      let data=null;
+      try{ data=JSON.parse(rd.result); }catch(err){ data=null; }
+      if(!looksLikeBackup(data)){
+        /* ここで止めないと、今までのデータが空で上書きされてしまいます。
+           理由は下の画面できちんと伝えるので、文字が隠れないようトーストは出しません */
+        openSheet('読み込めませんでした',function(b2,close2){
+          b2.appendChild(el('p','small muted','選んだファイル「'+esc(file.name)+'」は、AO Compass のバックアップとして読み取れませんでした。今までのデータはそのまま残しています。'));
+          b2.appendChild(el('div','note','「設定 → バックアップ書き出し」で保存した <b>ao-compass-backup-….json</b> を選んでください。ファイルの中身を書きかえたり、他のアプリのファイルを選んだりすると読み込めません。'));
+          const c2=el('button','btn primary block','閉じる'); c2.style.marginTop='10px'; c2.onclick=close2; b2.appendChild(c2);
+        });
+        return;
+      }
+      confirmImport(data,file.name);
+    };
+    rd.readAsText(file);
+  };
+  inp.click();
+}
 
 /* =========================================================================
    自己分析ワーク
