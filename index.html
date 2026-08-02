@@ -184,6 +184,33 @@ textarea.input{resize:vertical;min-height:80px;line-height:1.7}
 
 .note{background:var(--warn-soft);border:1px solid #f0dcc2;color:#7a5320;border-radius:12px;padding:10px 12px;font-size:12px;line-height:1.6}
 .acc summary .badge{white-space:nowrap}
+.acc>summary>.smt{flex:1 1 auto;min-width:0;text-align:left;display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+/* Notionのトグルのような開閉ブロック */
+.tg{border:1px solid var(--line);border-radius:12px;margin-bottom:8px;background:var(--surface);overflow:hidden}
+.tg>summary{list-style:none;cursor:pointer;padding:11px 13px;display:flex;align-items:center;gap:8px;font-weight:800;font-size:14px;color:var(--ink)}
+.tg>summary::-webkit-details-marker{display:none}
+.tg>summary::before{content:"\25B8";flex:none;color:var(--ink-3);font-size:13px;transition:transform .18s;display:inline-block;line-height:1}
+.tg[open]>summary::before{transform:rotate(90deg)}
+.tg>summary:active{background:var(--surface-2)}
+.tg[open]>summary{border-bottom:1px solid var(--line)}
+.tg .tg-t{flex:1 1 auto;min-width:0}
+.tg .tg-r{flex:0 1 auto;max-width:46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:800;color:var(--ink-3);text-align:right}
+.tg .tg-body{padding:10px 13px 13px}
+.tg.tg-orange{border-left:3px solid var(--orange)}
+.tg.tg-teal{border-left:3px solid var(--teal)}
+.tg.tg-navy{border-left:3px solid var(--navy)}
+/* 総合評価の一行サマリーと前回比 */
+.dchip{display:inline-block;font-size:11px;font-weight:900;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.dchip.up{background:#e8f5ee;color:#2e8b57}
+.dchip.dn{background:#fdecea;color:#b4573f}
+.dchip.fl{background:var(--surface-2);color:#8792a2}
+.dsm{font-size:10.5px;font-weight:900;margin-left:4px;white-space:nowrap}
+.histrow{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--line);font-size:12px}
+.histrow:first-child{border-top:0}
+.histrow .hd{flex:none;width:96px;color:var(--ink-3);font-size:11px;font-weight:700}
+.histrow .hb{flex:1;height:7px;border-radius:99px;background:var(--surface-2);overflow:hidden}
+.histrow .hb>span{display:block;height:100%;border-radius:99px}
+.histrow .hn{flex:none;width:58px;text-align:right;font-weight:900}
 .qt{border-left:3px solid var(--orange);background:var(--surface-2);border-radius:0 8px 8px 0;padding:6px 10px;margin:4px 0 8px;font-size:12px;line-height:1.7;color:var(--ink-2)}
 .qt b{color:var(--ink);font-weight:700}
 .qt .qlbl{display:block;font-size:10px;font-weight:800;color:var(--ink-3);margin-bottom:2px}
@@ -308,8 +335,18 @@ hr.sep{border:none;border-top:1px solid var(--line);margin:14px 0}
 /* =========================================================================
    AO Compass — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.06';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
-const LS_KEY='aoCompass_v1';
+const APP_VER='2026.08.09';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const LS_BASE='aoCompass_v1';
+const LS_SCOPE_KEY='aoCompass_scope';
+/* ログイン中のデータは、アカウントごとの引き出しに入れます。
+   こうしておくと、ログアウトしたときにその引き出しだけを空にでき、
+   共用の端末でも前の人のデータが見えてしまうことがありません。 */
+let LS_SCOPE=(()=>{try{return localStorage.getItem(LS_SCOPE_KEY)||null;}catch(e){return null;}})();
+function lsKey(){ return LS_SCOPE?LS_BASE+'__u_'+LS_SCOPE:LS_BASE; }
+/* ログインの記録がこの端末に無いのに、アカウントの引き出しだけ残っている場合は開きません
+   （通信できないとき・ログイン情報だけ消えたとき・共用端末で前の人が閉じたとき） */
+function hasStoredSession(){ try{ for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k&&k.indexOf('sb-')===0&&k.indexOf('auth-token')>0) return true; } }catch(e){} return false; }
+(function(){ if(LS_SCOPE&&!hasStoredSession()){ try{ localStorage.removeItem(LS_BASE+'__u_'+LS_SCOPE); localStorage.removeItem(LS_SCOPE_KEY); localStorage.removeItem('aoCompass_tg'); }catch(e){} LS_SCOPE=null; } })();
 const LS_VER='aoCompass_ver';
 const $=s=>document.querySelector(s);
 const el=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;};
@@ -332,7 +369,9 @@ function blankState(){ return {
   meta:{primarySchoolId:null, demoLoaded:false},
   schools:[], activities:[], documents:[], interview:[], essays:[], tasks:[], feedback:[], certs:[],
   self:{answers:{}, tags:{strengths:[],values:[],activities:[],themes:[],future:[],episodes:[]}},
-  story:{origin:'',problem:'',past:'',learned:'',wantLearn:'',whyUniv:'',afterEnroll:'',future:''}
+  story:{origin:'',problem:'',past:'',learned:'',wantLearn:'',whyUniv:'',afterEnroll:'',future:''},
+  profile:{name:'',grade:'',school:'',field:'',goal:'',onboarded:false,createdAt:null},
+  prefs:{textSize:'m',alertDays:14,greet:true}
 };}
 /* 古いバージョンで保存されたデータに、新しく増えた項目を足して読み込む（データは消しません） */
 function migrate(raw){
@@ -344,19 +383,29 @@ function migrate(raw){
   out.self.tags=Object.assign({},D.self.tags,(raw.self&&raw.self.tags)||{});
   Object.keys(D.self.tags).forEach(k=>{ if(!Array.isArray(out.self.tags[k])) out.self.tags[k]=[]; });
   out.story=Object.assign({},D.story,raw.story||{});
+  out.profile=Object.assign({},D.profile,raw.profile||{});
+  out.prefs=Object.assign({},D.prefs,raw.prefs||{});
   ['schools','activities','documents','interview','essays','tasks','feedback','certs'].forEach(k=>{ if(!Array.isArray(out[k])) out[k]=[]; });
   out.schools.forEach(x=>{ if(!x.checklist||typeof x.checklist!=='object') x.checklist={}; });
   out.documents.forEach(d=>{ if(!Array.isArray(d.feedbacks))d.feedbacks=[]; if(!Array.isArray(d.versions))d.versions=[]; if(!d.paragraphNotes||typeof d.paragraphNotes!=='object')d.paragraphNotes={}; if(!Array.isArray(d.scoreHistory))d.scoreHistory=[]; if(d.aiAnalysis&&typeof d.aiAnalysis!=='object')d.aiAnalysis=null; });
   return out;
 }
-function load(){ try{const r=localStorage.getItem(LS_KEY);if(r)return migrate(JSON.parse(r));}catch(e){} return blankState(); }
+function load(){ try{const r=localStorage.getItem(lsKey());if(r)return migrate(JSON.parse(r));}catch(e){} return blankState(); }
+/* 中身がまだ何も無い状態か（初ログイン時の引き継ぎ判定に使います） */
+function isEmptyState(x){ if(!x) return true;
+  const lists=['schools','activities','documents','interview','essays','tasks','feedback','certs'];
+  if(lists.some(k=>Array.isArray(x[k])&&x[k].length)) return false;
+  if(x.story&&Object.keys(x.story).some(k=>String(x.story[k]||'').trim())) return false;
+  if(x.self&&x.self.answers&&Object.keys(x.self.answers).length) return false;
+  if(x.profile&&String(x.profile.name||'').trim()) return false;
+  return true; }
 /* 更新のお知らせ（データはそのまま残ります） */
 function checkVersion(){
   let prev=null; try{ prev=localStorage.getItem(LS_VER); }catch(e){}
   try{ localStorage.setItem(LS_VER,APP_VER); }catch(e){}
   if(prev&&prev!==APP_VER) setTimeout(()=>toast('アプリが最新版に更新されました（'+APP_VER+'）','ok'),900);
 }
-function save(){ try{localStorage.setItem(LS_KEY,JSON.stringify(S));}catch(e){toast('保存に失敗しました（容量制限の可能性）','err');} scheduleCloudPush(); }
+function save(){ try{localStorage.setItem(lsKey(),JSON.stringify(S));}catch(e){toast('保存に失敗しました（容量制限の可能性）','err');} scheduleCloudPush(); }
 function commit(msg){ save(); if(msg)toast(msg,'ok'); render(); }
 
 /* =========================================================================
@@ -369,17 +418,45 @@ let sb=null, sbUser=null, sbStatus='guest', sbSyncTimer=null;
 function initCloud(){
   if(!cloudConfigured() || !window.supabase){ updateAuthBar(); return; }
   try{ sb=window.supabase.createClient(SB_URL,SB_ANON); }catch(e){ return; }
-  sb.auth.getSession().then(({data})=>{ if(data&&data.session){ onAuth(data.session.user); } updateAuthBar(); });
-  sb.auth.onAuthStateChange((event,session)=>{ if(event==='PASSWORD_RECOVERY'){ setTimeout(openPasswordUpdate,300); return; } if(session){ if(!sbUser||sbUser.id!==session.user.id) onAuth(session.user); } else { sbUser=null; sbStatus='guest'; } updateAuthBar(); });
+  sb.auth.getSession().then(({data})=>{
+    if(data&&data.session){ onAuth(data.session.user); }
+    else if(LS_SCOPE){ purgeAccountData(false); }   /* ログインが切れていたら、端末に残ったアカウントのデータは見せない */
+    updateAuthBar(); });
+  sb.auth.onAuthStateChange((event,session)=>{ if(event==='PASSWORD_RECOVERY'){ setTimeout(openPasswordUpdate,300); return; } if(session){ if(!sbUser||sbUser.id!==session.user.id) onAuth(session.user); } else { if(LS_SCOPE) purgeAccountData(false); sbUser=null; sbStatus='guest'; } updateAuthBar(); });
   updateAuthBar();
 }
-function onAuth(u){ sbUser=u; sbStatus='synced'; updateAuthBar(); cloudPull(); try{ refreshEntitlement(); }catch(e){} }
+function onAuth(u){
+  const carry=(!LS_SCOPE&&!isEmptyState(S))?S:null;   /* ゲストのまま書いていた内容を、初ログイン時だけ引き継ぐ */
+  sbUser=u; sbStatus='synced';
+  if(LS_SCOPE!==u.id){
+    LS_SCOPE=u.id; try{ localStorage.setItem(LS_SCOPE_KEY,u.id); }catch(e){}
+    S=load();
+    if(carry&&isEmptyState(S)){ S=carry; try{ localStorage.setItem(lsKey(),JSON.stringify(S)); }catch(e){} }
+    try{ render(); }catch(e){}
+  }
+  updateAuthBar(); cloudPull(); try{ refreshEntitlement(); }catch(e){}
+}
+/* ログアウト時に、このアカウントぶんのデータを端末から消します（クラウドには残ります） */
+function purgeAccountData(alsoKey){
+  if(LS_SCOPE){ try{ localStorage.removeItem(lsKey()); }catch(e){} }
+  LS_SCOPE=null; try{ localStorage.removeItem(LS_SCOPE_KEY); }catch(e){}
+  if(alsoKey){ AICFG={}; try{ localStorage.removeItem(AICFG_KEY); }catch(e){} }
+  try{ localStorage.removeItem('aoCompass_tg'); }catch(e){}
+  sbUser=null; sbStatus='guest'; clearTimeout(sbSyncTimer);
+  S=load();   /* ログイン前に使っていたゲストのデータに戻ります */
+  updateAuthBar(); try{ render(); }catch(e){}
+}
+async function doLogout(alsoKey){
+  try{ await cloudPush(); }catch(e){}
+  try{ if(sb) await sb.auth.signOut(); }catch(e){}
+  purgeAccountData(alsoKey);
+}
 async function cloudPull(){
   if(!sb||!sbUser) return;
   try{
     const {data,error}=await sb.from('app_state').select('data').eq('user_id',sbUser.id).maybeSingle();
     if(error){ sbStatus='error'; updateAuthBar(); return; }
-    if(data&&data.data){ S=migrate(data.data); localStorage.setItem(LS_KEY,JSON.stringify(S)); sbStatus='synced'; render(); toast('クラウドから読み込みました','ok'); }
+    if(data&&data.data){ S=migrate(data.data); localStorage.setItem(lsKey(),JSON.stringify(S)); sbStatus='synced'; render(); toast('クラウドから読み込みました','ok'); }
     else { await cloudPush(); }
   }catch(e){ sbStatus='error'; updateAuthBar(); }
 }
@@ -445,9 +522,18 @@ function openAuthSheet(){
       b.appendChild(el('div','note info','ログイン中：<b>'+esc(sbUser.email)+'</b><br>入力データはこのアカウントに自動保存されます。別の端末でも同じメール・パスワードでログインすれば、続きから使えます。'));
       const sync=el('button','btn primary block','今すぐ同期する'); sync.onclick=async()=>{ await cloudPush(); toast('同期しました','ok'); };
       const pull=el('button','btn ghost block','クラウドから読み込み直す'); pull.style.marginTop='8px'; pull.onclick=async()=>{ await cloudPull(); close(); };
-      const out=el('button','btn danger block','ログアウト'); out.style.marginTop='8px'; out.onclick=async()=>{ await sb.auth.signOut(); sbUser=null; sbStatus='guest'; updateAuthBar(); toast('ログアウトしました','ok'); close(); };
-      b.append(sync,pull,out);
-      b.appendChild(el('p','xsmall muted','この端末のデータはログアウト後も残ります。共用PCでは「その他 → すべてのデータを削除」もご検討ください。'));
+      b.append(sync,pull);
+      const kb=el('label','small'); kb.style.cssText='display:flex;align-items:center;gap:7px;margin:12px 0 6px;cursor:pointer';
+      const kc=el('input'); kc.type='checkbox'; kc.style.cssText='width:17px;height:17px;flex:none';
+      kb.append(kc,el('span',null,'AIのAPIキーもこの端末から消す'));
+      if(aiReady()) b.appendChild(kb);
+      const out=el('button','btn danger block','ログアウト');
+      out.onclick=()=>{ confirmDelete('ログアウトすると、このアカウントのデータはこの端末から消えます。クラウドには残っているので、次にログインすれば元どおり読み込まれます。',async()=>{
+        out.disabled=true; out.textContent='同期してからログアウト中…';
+        await doLogout(kc.checked);
+        toast('ログアウトしました（この端末のデータは消しました）','ok'); try{ close(); }catch(e){} }); };
+      b.appendChild(out);
+      b.appendChild(el('div','note','🔒 ログアウトすると、この端末に保存されたこのアカウントのデータは削除されます。最後に自動で同期してから消すので、内容が失われることはありません。学校や図書館の共用パソコンでも安心して使えます。'));
       return;
     }
     b.appendChild(el('div','note info','メールアドレスとパスワードでアカウントを作ると、入力データがクラウドに保存され、<b>スマホでもPCでも同じログインで続きから</b>使えます。'));
@@ -562,7 +648,7 @@ function openBillingSheet(reason){
 let view='home';
 function go(v){ try{ flushAutosave(); }catch(e){} view=v; window.scrollTo({top:0}); render(); }
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>go(b.dataset.tab));
-$('#btnMore').onclick=()=>go('more');
+$('#btnMore').onclick=()=>go('settings');
 $('#btnAuth').onclick=()=>openAuthSheet();
 
 function render(){
@@ -574,8 +660,10 @@ function render(){
   });
   const r=$('#root'); r.innerHTML='';
   const v=({home:vHome,schools:vSchools,documents:vDocuments,interview:vInterview,more:vMore,
-    self:vSelf,portfolio:vPortfolio,story:vStory,essay:vEssay,tasks:vTasks,feedback:vFeedback,certs:vCerts,ai:vAI})[view]||vHome;
+    self:vSelf,portfolio:vPortfolio,story:vStory,essay:vEssay,tasks:vTasks,feedback:vFeedback,certs:vCerts,ai:vAI,
+    settings:vSettings})[view]||vHome;
   r.appendChild(v());
+  try{ applyPrefs(); }catch(e){}
 }
 
 /* ---------------- Toast ---------------- */
@@ -592,6 +680,7 @@ function openSheet(title, buildBody, opts={}){
   sh.appendChild(head);
   const body=el('div'); sh.appendChild(body);
   buildBody(body, closeSheet);
+  try{ applyPrefs(); }catch(e){}
   ov.classList.add('open'); document.body.style.overflow='hidden';
   ov.onclick=e=>{ if(e.target===ov) closeSheet(); };
 }
@@ -630,6 +719,91 @@ function splitSent(t){ const out=[]; let cur='';
   const v=cur.trim(); if(v.length>1) out.push(v); return out; }
 function clip(x,n){ x=String(x||'').replace(/\s+/g,' ').trim(); n=n||34; return x.length>n?x.slice(0,n)+'…':x; }
 function sentWith(t,word){ const s=splitSent(t).find(x=>x.includes(word)); return s?clip(s):''; }
+
+/* =========================================================================
+   良い志望理由書の判断基準
+   読んだ人が次の4つすべてに「はい」と答えられる状態が理想です。
+     1. なぜその分野に興味を持ったのか分かる
+     2. なぜその大学・学部なのか分かる
+     3. 大学で何を学びたいのか分かる
+     4. 卒業後、その学びをどう生かすのか分かる
+   ========================================================================= */
+const JUDGE_KEYS=['q1','q2','q3','q4'];
+const JUDGE_LABELS={
+  q1:'なぜその分野に興味を持ったのか分かる',
+  q2:'なぜその大学・学部なのか分かる',
+  q3:'大学で何を学びたいのか分かる',
+  q4:'卒業後、その学びをどう生かすのか分かる'
+};
+const JUDGE_HINT={q1:'興味ではなく、問題意識から始まっているか',q2:'他大学に置き換えても成立しないか',q3:'分野名まで落とし込めているか',q4:'将来像が現実的で具体的か'};
+/* 「法律」ではなく「国際人権法」まで落とし込めているか、を見るための語 */
+const BROAD_FIELDS=['法律','法学','経済','経営','商学','心理','国際','教育','医療','看護','情報','環境','建築','政治','社会','文学','デザイン','農業','スポーツ','福祉','観光','薬','理学','工学','語学','芸術'];
+function narrowFields(t){
+  const m=String(t||'').match(/[一-龯ァ-ヶー]{2,}(法|学|論|政策|工学|科学|医療|福祉|開発|支援|経済)/g)||[];
+  return m.filter(w=>w.length>=4&&!/(大学|学部|学科|進学|入学|独学|中学|高校|通学|見学|在学|同学|科学的)$/.test(w));
+}
+function rubricSignals(t,ctx){
+  t=String(t||''); ctx=ctx||{};
+  const school=ctx.school||null; const univName=school?school.name:'';
+  return {
+    origin:/(きっかけ|契機|出会|体験し|経験した|見たとき|知ったとき|言われた|目の当たり|参加した|訪れた)/.test(t),
+    problem:/(課題|問題|疑問|違和感|矛盾|解決|不足|格差|足りな|困って|苦しんで|おかしい|納得できな)/.test(t),
+    univRef:/(ゼミ|ゼミナール|研究室|カリキュラム|講義|授業|科目|教授|先生の研究|プログラム|演習|コース|専攻)/.test(t),
+    mentionsUniv:!!((univName&&t.includes(univName.replace(/大学$/,'')))||/(貴学|貴学部|貴校|本学部|御校)/.test(t)),
+    wantLearn:/(学びたい|研究したい|深めたい|身につけたい|専攻|履修|学ぶ)/.test(t),
+    narrow:narrowFields(t),
+    future:/(将来|卒業後|進路|なりたい|目指し|キャリア|職に|仕事に)/.test(t),
+    concreteFuture:/(弁護士|医師|看護師|教員|教師|研究者|公務員|国際機関|NPO|NGO|企業|法務|記者|建築士|薬剤師|技術者|エンジニア|起業|自治体|省庁|病院|学校現場|支援団体|行政|メーカー|自治会|福祉施設)/.test(t),
+    learn:/(学んだ|学びました|気づいた|気付いた|痛感し|実感し|考えるようになっ|分かった|知った)/.test(t),
+    likeOnly:/(好き|興味があ|関心があ|楽しかった|面白い|面白かった)/.test(t),
+    selfPR:/(強み|長所|得意|自信があ|評価され|リーダーとして|力を発揮)/.test(t)
+  };
+}
+/* 4つの問いに、いまの本文で答えられるかを判定します（オフライン簡易版） */
+function judgeOffline(t,ctx){
+  const g=rubricSignals(t,ctx);
+  const mk=(a,why,fix)=>({a:a,why:why,fix:fix});
+  const j={};
+  j.q1 = (g.origin&&g.problem) ? mk('yes','きっかけと、そこから生まれた問題意識の両方が読み取れます。','その問題意識を、もう一段だけ絞れます（誰の、どんな困りごとか）。')
+       : g.origin ? mk('partly','きっかけは書かれていますが、そこで何を課題だと思ったのかが弱いです。','「〜に違和感を持った」「〜を解決したい」に当たる一文を、きっかけの直後に足してください。')
+       : g.problem ? mk('partly','関心の中身はありますが、そう考えるに至った実際の出来事が見当たりません。','ニュースや一般論ではなく、あなたが実際に経験した場面を1つ書いてください。')
+       : mk('no','興味の理由が、きっかけからも問題意識からも説明されていません。','①いつ・どこで何があったか ②そこで何が課題だと思ったか、の順に2文足してください。');
+  j.q2 = (g.mentionsUniv&&g.univRef) ? mk('yes','大学名と、その大学の学び（授業・ゼミ・教授・研究）の両方に触れています。','その学びが、あなたの課題意識のどこに効くのかまで書けると、さらに強くなります。')
+       : g.univRef ? mk('partly','学びの中身には触れていますが、それがこの大学のものだと分かる書き方になっていません。','大学名を出し、公式サイトで確認したゼミ・科目・教授名を1つ挙げてください。')
+       : g.mentionsUniv ? mk('partly','大学名は出ていますが、他大学に置き換えても成立する内容です。','「この大学だから」と言える根拠（授業・教授・ゼミ・研究内容）を1つ入れてください。')
+       : mk('no','なぜこの大学・学部なのかが書かれていません。','独学や他大学ではなく、この大学だからこそ学べる理由を1段落足してください。');
+  j.q3 = (g.wantLearn&&g.narrow.length) ? mk('yes','学びたいことが、分野名まで具体的に書かれています。','その分野の中で、特にどのテーマを扱いたいかまで絞れます。')
+       : g.wantLearn ? mk('partly','学びたい意思はありますが、分野が広いままです。','「法律を学びたい」ではなく「国際人権法」「知的財産法」のように、分野名まで落とし込んでください。')
+       : mk('no','大学で何を学びたいのかが書かれていません。','学びたい分野名と、その分野を選んだ理由を1〜2文で足してください。');
+  j.q4 = (g.future&&g.concreteFuture) ? mk('yes','卒業後にやりたいことが、具体的な場や役割まで書かれています。','その将来のために、大学4年で何を身につけるのかとつなげてください。')
+       : g.future ? mk('partly','将来の話はありますが、抽象的です。','「世界平和に貢献したい」ではなく「国際機関で〇〇に携わりたい」のように、場所・相手・手段のどれかを入れてください。')
+       : mk('no','卒業後、その学びをどう生かすのかが書かれていません。','最後の段落に、学びを使う場面を1〜2文で足してください。断定でなく現時点の考えで構いません。');
+  return j;
+}
+function judgeYesCount(j){ if(!j) return 0; return JUDGE_KEYS.filter(k=>j[k]&&j[k].a==='yes').length; }
+/* 4つの問いを ○△× で表示します。ここが全部○になるのが目標です。 */
+function renderJudge(host,j,kb){
+  if(!j||!JUDGE_KEYS.some(k=>j[k])) return;
+  const yes=judgeYesCount(j);
+  const MARK={yes:['○','#2f7d5b'],partly:['△','#b07b28'],no:['×','#b4573f']};
+  tgCard(host,{icon:'🎯',title:'読み手の4つの問い',right:'はい '+yes+'/4',key:(kb||'an')+'.judge',open:true,accent:'teal'},(bd)=>{
+    bd.appendChild(el('p','xsmall muted','読んだ人がこの4つすべてに「はい」と答えられる状態が理想です。合否判定ではありません。'));
+    JUDGE_KEYS.forEach(k=>{
+      const v=j[k]; if(!v) return;
+      const a=(v.a==='yes'||v.a==='partly'||v.a==='no')?v.a:'partly';
+      const m=MARK[a];
+      const row=el('div'); row.style.cssText='display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line,#e7e2d8)';
+      const mk=el('div',null,m[0]); mk.style.cssText='font-size:20px;font-weight:800;line-height:1.1;color:'+m[1]+';width:22px;text-align:center;flex:none';
+      const tx=el('div'); tx.style.flex='1';
+      tx.innerHTML='<div class="small" style="font-weight:700">'+esc(JUDGE_LABELS[k])+'</div>'
+        +'<div class="xsmall muted" style="margin-top:1px">'+esc(JUDGE_HINT[k]||'')+'</div>'
+        +(v.why?'<div class="xsmall" style="margin-top:4px">'+esc(v.why)+'</div>':'')
+        +(v.fix&&a!=='yes'?'<div class="xsmall" style="margin-top:3px;color:#2b6b57">→ '+esc(v.fix)+'</div>':(v.fix?'<div class="xsmall muted" style="margin-top:3px">→ '+esc(v.fix)+'</div>':''));
+      row.append(mk,tx); bd.appendChild(row);
+    });
+    bd.appendChild(el('p','xsmall muted','※慶應義塾大学のように、志望理由書とは別に「学習計画」など複数の設問を課す大学もあります。設問ごとに役割を分けて書いてください。'));
+  });
+}
 
 /* テキストを設問・大学情報に照らして分析し、8観点スコア＋指摘＋質問を返す */
 function analyzeText(text, ctx={}){
@@ -755,8 +929,68 @@ function analyzeText(text, ctx={}){
       why:'設問の語を使わないと、聞かれたことに答えていないと判断されることがあります。',
       how:'設問の言葉をそのまま1回は本文で使い、それに正面から答える文を入れてください。'}); }
 
+  /* ---- ここから：良い志望理由書の判断基準に沿った点検 ---- */
+  const G=rubricSignals(t,ctx);
+  const isRieki=/(志望理由|志望動機)/.test(String(ctx.docType||'')+' '+String(ctx.question||''));
+  // (15) 「好きだから」で止まっている
+  if(G.likeOnly&&!G.problem&&len>120) findings.push({sev:'must',cat:'論理',quote:sentWith(t,'好き')||sentWith(t,'興味')||'',
+    title:'「好きだから」で止まっていて、問題意識まで進んでいません',
+    why:'総合型選抜で見られているのは、興味の強さではなく問題意識です。好きなだけなら誰でも書けます。',
+    how:'「好き → そこで持った疑問 → 課題だと思ったこと → だから学びたい」の順に並べ直してください。',
+    q:'その分野に触れていて、いちばん「おかしい」「なんとかしたい」と思ったのは何ですか？'});
+  // (16) 経験を並べただけになっている
+  if(!G.learn&&len>200&&(t.match(/(しました|した。|行った|参加し|務め|活動し)/g)||[]).length>=3)
+    findings.push({sev:'must',cat:'独自性',quote:'',title:'やったことの列挙で終わり、そこから何を学んだかが書かれていません',
+      why:'志望理由書は活動実績を並べる文章ではありません。読み手が知りたいのは、その経験であなたの考えがどう変わったかです。',
+      how:'活動を1つに絞り、そこで「何を経験し／何に気づき／何を課題だと思ったか」の3文に書き直してください。',
+      q:'その活動の前と後で、あなたの考えはどう変わりましたか？'});
+  // (17) 学びたい分野が広いまま
+  if(BROAD_FIELDS.some(w=>t.includes(w))&&!G.narrow.length&&len>120)
+    findings.push({sev:'important',cat:'志望校接続',quote:'',title:'学びたい分野が広いままです（例：「法律」→「国際人権法」まで絞る）',
+      why:'分野が広いままだと、本当に調べたのかが伝わらず、どの大学にも出せる文章に見えます。',
+      how:'学部のカリキュラムを見て、扱いたい分野名を1つ選び、あなたの課題意識とつなげてください。',
+      q:'その分野の中で、いちばん扱いたいテーマは何ですか？'});
+  // (18) 将来像が抽象的
+  if(G.future&&!G.concreteFuture&&len>120)
+    findings.push({sev:'important',cat:'論理',quote:sentWith(t,'将来')||sentWith(t,'卒業後')||'',
+      title:'将来像が抽象的で、現実の場面が浮かびません',
+      why:'「社会に貢献したい」だけでは、学びと将来がつながっているか読み手が確かめられません。',
+      how:'どこで（機関・企業・地域）、誰に対して、何をするのかのうち、分かるものだけでも書いてください。',
+      q:'10年後、どこで、誰のために働いていたいですか？'});
+  // (19) 軸がぶれている
+  { const hit=BROAD_FIELDS.filter(w=>t.includes(w));
+    if(hit.length>=4&&len>200) findings.push({sev:'important',cat:'一貫性',quote:'',
+      title:'話題が複数の分野にまたがっていて、軸が定まっていません（'+hit.slice(0,4).map(esc).join('・')+' など）',
+      why:'一つのテーマを深掘りした文章のほうが、あれもこれも触れた文章より強く残ります。',
+      how:'中心にする分野を1つ決め、それ以外は「その分野につながる話」としてだけ残すか、削ってください。',
+      q:'どうしても外せない、いちばん深く考えてきたテーマは何ですか？'}); }
+  // (20) 志望理由書なのに自己PRになっている
+  if(isRieki&&G.selfPR&&!G.univRef&&len>150)
+    findings.push({sev:'important',cat:'設問適合',quote:sentWith(t,'強み')||sentWith(t,'長所')||'',
+      title:'志望理由ではなく、自己PRの内容になっています',
+      why:'自己PR＝自分の強み、志望理由＝この大学で学ぶ理由です。混ざると、聞かれたことに答えていない書類になります。',
+      how:'強みの説明を削り、その分を「大学で何をどう学ぶか」に使ってください。強みは自己PR欄で書けます。'});
+  // (21) 大学でなければならない理由（独学との差）
+  if(!G.univRef&&len>140)
+    findings.push({sev:'must',cat:'志望校接続',quote:'',title:'「独学ではなく大学で学ぶ必要がある」理由が書かれていません',
+      why:'本やネットで足りる内容だと、大学に行く理由になりません。ここは授業・ゼミ・研究に触れれば必ず埋まります。',
+      how:'受けたい授業名・ゼミ名・教授の研究テーマのどれか1つを挙げ、それが自分の課題にどう効くかを書いてください。',
+      q:'その大学でしかできないことは何だと思いますか？'});
+  // (22) 6段構成のどこが抜けているか
+  { const st=[['きっかけ',G.origin],['経験',/(私は|自分は|担当し|提案し|企画し|参加し|活動し)/.test(t)],['気づき',G.learn],['課題意識',G.problem],['大学で学びたいこと',G.wantLearn&&G.univRef],['将来どう生かすか',G.future]];
+    const lack=st.filter(x=>!x[1]).map(x=>x[0]);
+    if(lack.length&&len>180) findings.push({sev:lack.length>=3?'must':'important',cat:'論理',quote:'',
+      title:'読み手が納得できる流れのうち、'+lack.map(esc).join('・')+'が見当たりません',
+      why:'1きっかけ→2経験→3気づき→4課題意識→5大学で学びたいこと→6将来どう生かすか、の順に並んでいると、読み手は迷わず最後まで読めます。',
+      how:'抜けている項目を1文ずつ足してから、この順に段落を並べ替えてください。'}); }
+  const judge=judgeOffline(t,ctx);
+
   /* 書くべきなのに、まだ書かれていないもの */
   const missing=[];
+  if(!G.problem) missing.push('「〜に違和感を持った」「〜を解決したい」という問題意識');
+  if(!G.narrow.length) missing.push('学びたい分野の具体名（例：法律 →「国際人権法」）');
+  if(G.future&&!G.concreteFuture) missing.push('将来像の具体化（どこで・誰に対して・何をするか）');
+  if(!G.univRef) missing.push('独学ではなく大学で学ぶ必要がある理由');
   if(!num) missing.push('活動の規模・期間・回数を示す数字');
   if(!fp) missing.push('その中であなた自身が決めた・動いたこと');
   if(univName&&!mentionsUniv) missing.push('その大学でなければならない理由');
@@ -765,12 +999,13 @@ function analyzeText(text, ctx={}){
   if(!hasOrigin) missing.push('その関心を持ったきっかけ');
   if(!hasCause) missing.push('その行動を選んだ理由');
 
+  const _seen={}; const missing2=missing.filter(x=>{ if(_seen[x])return false; _seen[x]=1; return true; }); missing.length=0; missing2.forEach(x=>missing.push(x));
   const SEVR={must:0,important:1,check:2};
   findings.sort((a,b)=>(SEVR[a.sev]==null?3:SEVR[a.sev])-(SEVR[b.sev]==null?3:SEVR[b.sev]));
   const priorities=findings.filter(f=>f.sev!=='check').slice(0,3);
   const nextActions=priorities.length?priorities.map(f=>f.title):['大きな問題は見つかりませんでした。声に出して読み、詰まる箇所を微調整しましょう。'];
   const rewrites=abs.length?buildRewrites(t,abs):[];
-  return {len,scores,findings,priorities,nextActions,missing,rewrites,highlights:{abstract:abs,longSent}};
+  return {len,scores,findings,priorities,nextActions,missing,judge,rewrites,highlights:{abstract:abs,longSent}};
 }
 function relevanceToQuestion(t,q){
   const keys=(q.match(/[一-龯]{2,}/g)||[]).filter(w=>!['理由','説明','記述','以内','述べ','あなた','ください'].includes(w));
@@ -944,7 +1179,8 @@ function schoolProgress(s){
   const done=keys.filter(k=>cl[k]).length; return Math.round(done/keys.length*100);
 }
 function countdownBox(iso){
-  const dd=daysUntil(iso); const box=el('div','countdown '+(dd!=null&&dd<=14?'urgent':dd!=null&&dd<=30?'soon':''));
+  const AD=alertDays();
+  const dd=daysUntil(iso); const box=el('div','countdown '+(dd!=null&&dd<=AD?'urgent':dd!=null&&dd<=AD*2?'soon':''));
   if(dd==null){ box.innerHTML='<div><div class="num">—</div><div class="small muted">締切未設定</div></div>'; return box; }
   box.innerHTML=`<div><div class="num">${dd<0?'締切済':dd}</div>${dd>=0?'<div class="small muted">日</div>':''}</div><div class="small muted">出願締切<br>${fmtDate(iso)}</div>`;
   return box;
@@ -958,7 +1194,8 @@ function vHome(){
   const w=el('div','view');
   const primary=S.schools.find(s=>s.id===S.meta.primarySchoolId)||S.schools[0];
   if(!S.schools.length && !S.documents.length){
-    w.appendChild(pageHead('ようこそ','総合型選抜の準備を、ここで一気通貫に'));
+    const _n0=(S.profile&&S.profile.name||'').trim();
+    w.appendChild(pageHead(_n0&&S.prefs&&S.prefs.greet!==false?_n0+'さん、ようこそ':'ようこそ','総合型選抜の準備を、ここで一気通貫に'));
     const c=el('div','card');
     c.innerHTML='<div class="card-title"><span class="ic">🧭</span><h3>AO Compass へようこそ</h3></div><p class="small muted">「自己分析 → 志望校研究 → 出願戦略 → 書類作成 → 面接・小論文 → 出願」を一か所で管理できます。まずはデモを見るか、志望校の登録から始めましょう。</p>';
     const row=el('div','btn-row'); row.style.marginTop='10px';
@@ -967,7 +1204,8 @@ function vHome(){
     row.append(b1,b2); c.appendChild(row); w.appendChild(c);
     w.appendChild(privacyNote()); return w;
   }
-  w.appendChild(pageHead('ホーム','次にやることが、ひと目で分かります'));
+  const _nm=(S.profile&&S.profile.name||'').trim();
+  w.appendChild(pageHead(_nm&&S.prefs&&S.prefs.greet!==false?_nm+'さん、おかえりなさい':'ホーム','次にやることが、ひと目で分かります'));
 
   // ヒーロー：第一志望＋カウントダウン
   const hero=el('div','card');
@@ -1072,7 +1310,7 @@ function homeAdvice(primary){
   bits.push('※AIは合否を判断しません。最後は必ずあなた自身の言葉で確認してください。');
   return bits.join('<br>');
 }
-function privacyNote(){ const n=el('div','note info'); n.style.marginTop='4px'; n.innerHTML='🔒 <b>プライバシーについて：</b>入力内容（志望校・書類・自己分析など）は、このブラウザ内（localStorage）にのみ保存され、外部には送信されません。共用のパソコンでは使用後に「その他 → すべてのデータを削除」をおすすめします。'; return n; }
+function privacyNote(){ const n=el('div','note info'); n.style.marginTop='4px'; n.innerHTML='🔒 <b>プライバシーについて：</b>入力内容（志望校・書類・自己分析など）は、このブラウザ内（localStorage）にのみ保存され、外部には送信されません。ログイン中はご自身のアカウントにのみ同期され、ログアウトするとこの端末から消えます。共用のパソコンでは使用後に「設定 → すべてのデータを削除」をおすすめします。'; return n; }
 
 /* =========================================================================
    志望校
@@ -2214,7 +2452,7 @@ function vDocuments(){
 /* =========================================================================
    ファイル読み取り（PDF / Word / パワポ / テキスト）＋書類の種別
    ========================================================================= */
-const DOC_TYPES=['志望理由書','自己推薦書','活動報告書','研究計画書','プレゼン資料','小論文','エッセイ','その他'];
+const DOC_TYPES=['志望理由書','自己推薦書','学習計画書','活動報告書','研究計画書','プレゼン資料','小論文','エッセイ','その他'];
 function xmlText(s){ return (s||'').replace(/<[^>]+>/g,'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;|&apos;/g,"'").replace(/&amp;/g,'&'); }
 async function extractFileText(file){
   const name=(file.name||'').toLowerCase(); const ext=name.split('.').pop();
@@ -2370,20 +2608,20 @@ function openDocEditor(id,tab){
       pane.appendChild(el('p','xsmall muted','↓ 以下は瞬時に出るオフラインの簡易チェックです（APIは使いません）。'));
       pane.appendChild(el('div','note','🤖 <b>あなたが話していない経験は作りません。</b>指摘のヒントに沿って、あなた自身の言葉で直してください。'));
       // スコア
-      const sc=el('div','card tight'); sc.appendChild(el('h4',null,'評価シート（合否予測ではありません）'));
-      renderScoreCard(sc,a.scores,{doc:d,text:d.body,kind:'offline'});
-      pane.appendChild(sc);
+      tgCard(pane,{icon:'📋',title:'評価シート',right:'かんたん採点',key:'sm.score',open:true,accent:'navy'},(sc)=>{
+        renderScoreCard(sc,a.scores,{doc:d,text:d.body,kind:'offline'}); });
+      renderJudge(pane,a.judge,'sm');
       // 次のアクション
-      const na=el('div','card tight'); na.style.borderLeft='3px solid var(--orange)'; na.innerHTML='<h4>🚩 まず直すべきこと（最大3件）</h4>';
-      const ol=el('ol'); ol.style.margin='8px 0 0';ol.style.paddingLeft='20px'; a.nextActions.forEach(x=>{const li=el('li','small');li.style.marginBottom='4px';li.textContent=x;ol.appendChild(li);}); na.appendChild(ol); pane.appendChild(na);
+      tgCard(pane,{icon:'🚩',title:'まず直すべきこと',right:Math.min(3,a.nextActions.length)+'件',key:'sm.prio',open:true,accent:'orange'},(na)=>{
+        const ol=el('ol'); ol.style.cssText='margin:0;padding-left:20px'; a.nextActions.forEach(x=>{const li=el('li','small');li.style.marginBottom='4px';li.textContent=x;ol.appendChild(li);}); na.appendChild(ol); });
       renderHomeworkBar(pane,(a.priorities&&a.priorities.length?a.priorities:a.nextActions),d);
       // ハイライト
-      if(a.highlights.abstract.length){ const hb=el('div','card tight'); hb.innerHTML='<h4>本文の気になる箇所</h4>'; const body=el('p','small'); body.style.lineHeight='2'; let html=nl2br(d.body); a.highlights.abstract.forEach(wd=>{ html=html.split(esc(wd)).join(`<span class="hl-weak">${esc(wd)}</span>`); }); body.innerHTML=html||'（本文が空です）'; hb.appendChild(body); hb.appendChild(el('p','xsmall muted','オレンジ下線＝抽象的で、具体化すると伝わりやすくなる語')); pane.appendChild(hb); }
+      if(a.highlights.abstract.length){ tgCard(pane,{icon:'🖍',title:'本文の気になる箇所',right:a.highlights.abstract.length+'語',key:'sm.hl',open:false},(hb)=>{ const body=el('p','small'); body.style.lineHeight='2'; let html=nl2br(d.body); a.highlights.abstract.forEach(wd=>{ html=html.split(esc(wd)).join(`<span class="hl-weak">${esc(wd)}</span>`); }); body.innerHTML=html||'（本文が空です）'; hb.appendChild(body); hb.appendChild(el('p','xsmall muted','オレンジ下線＝抽象的で、具体化すると伝わりやすくなる語')); }); }
       // findings 詳細
-      renderMissing(pane,a.missing);
-      renderFindings(pane,a.findings);
+      renderMissing(pane,a.missing,'sm');
+      renderFindings(pane,a.findings,d,'sm');
       // 書き換えの方向性
-      if(a.rewrites.length){ const rw=el('div','card tight'); rw.innerHTML='<h4>書き換えの方向性（3案）</h4><p class="xsmall muted">※文章を自動では置き換えません。採用するかはあなたが決めてください。</p>'; a.rewrites.forEach(r=>{ const d2=el('div'); d2.style.marginTop='8px'; d2.innerHTML=`<span class="badge teal">${esc(r.mode)}</span><p class="small" style="margin:4px 0 0">${esc(r.text)}</p>`; rw.appendChild(d2); }); pane.appendChild(rw); }
+      if(a.rewrites.length){ tgCard(pane,{icon:'✏️',title:'書き換えの方向性',right:a.rewrites.length+'案',key:'sm.rw',open:false},(rw)=>{ rw.appendChild(el('p','xsmall muted','※文章を自動では置き換えません。採用するかはあなたが決めてください。')); a.rewrites.forEach(r=>{ const d2=el('div'); d2.style.marginTop='8px'; d2.innerHTML=`<span class="badge teal">${esc(r.mode)}</span><p class="small" style="margin:4px 0 0">${esc(r.text)}</p>`; rw.appendChild(d2); }); }); }
       // 大学適合＋面接質問
       const extra=el('div','btn-row'); extra.style.marginTop='4px';
       const fitBtn=el('button','btn sm','🎓 大学との適合度'); fitBtn.onclick=()=>showFit(d); extra.appendChild(fitBtn);
@@ -2523,6 +2761,187 @@ function openInterview(id){
   });
 }
 
+
+/* =========================================================================
+   設定（プロフィール・表示・AI・使用量・データ）
+   ========================================================================= */
+const GRADES=['高1','高2','高3','既卒・浪人','その他'];
+const TEXT_SIZES=[['s','小'],['m','標準'],['l','大'],['xl','特大']];
+const ZOOMS={s:0.93,m:1,l:1.1,xl:1.22};
+function alertDays(){ const n=+((S.prefs&&S.prefs.alertDays)||14); return (n>=1&&n<=180)?n:14; }
+/* 文字の大きさを画面に反映します（端末の設定は変えません） */
+function applyPrefs(){
+  const z=ZOOMS[(S.prefs&&S.prefs.textSize)||'m']||1;
+  ['#root','#sheet'].forEach(sel=>{ const n=document.querySelector(sel); if(n) n.style.zoom=z===1?'':String(z); });
+}
+
+/* ---- AIの使用量メーター（本物のAIを使った回数と、おおよその料金） ---- */
+const USE_KEY='aoCompass_use';
+const RATE_KEY='aoCompass_rate';
+function useLog(){ try{ const a=JSON.parse(localStorage.getItem(USE_KEY)); return Array.isArray(a)?a:[]; }catch(e){ return []; } }
+function useSave(a){ try{ localStorage.setItem(USE_KEY,JSON.stringify(a.slice(-400))); }catch(e){} }
+function rates(){ const D={in:3,out:15,jpy:155}; try{ const r=JSON.parse(localStorage.getItem(RATE_KEY))||{}; return {in:+r.in>=0?+r.in:D.in,out:+r.out>=0?+r.out:D.out,jpy:+r.jpy>0?+r.jpy:D.jpy}; }catch(e){ return D; } }
+function saveRates(r){ try{ localStorage.setItem(RATE_KEY,JSON.stringify(r)); }catch(e){} }
+/* 1回ぶんを記録します。トークン数はAIの応答が教えてくれる値を使い、無いときは文字数から概算します */
+function recordUsage(prov,model,inTok,outTok,label){
+  const a=useLog();
+  a.push({at:Date.now(),p:prov||'',m:model||'',i:Math.max(0,Math.round(inTok||0)),o:Math.max(0,Math.round(outTok||0)),l:label||''});
+  useSave(a); return a;
+}
+function usageCost(r,R){ R=R||rates(); return (r.i/1e6)*R.in*R.jpy + (r.o/1e6)*R.out*R.jpy; }
+function usageStats(){
+  const R=rates(), a=useLog(), now=new Date(), ym=now.getFullYear()+'-'+(now.getMonth()+1);
+  const sum=list=>{ const o={n:list.length,i:0,o:0,y:0}; list.forEach(r=>{ o.i+=r.i; o.o+=r.o; o.y+=usageCost(r,R); }); return o; };
+  const month=a.filter(r=>{ const d=new Date(r.at); return d.getFullYear()+'-'+(d.getMonth()+1)===ym; });
+  return {all:sum(a),month:sum(month),recent:a.slice(-10).reverse(),rate:R};
+}
+function yen(v){ v=v||0; return '¥'+(v<10?(Math.round(v*10)/10):Math.round(v)).toLocaleString(); }
+
+/* ---- 最初のプロフィール作成 ---- */
+function profileFields(b,P){
+  const nm=fieldText('名前（ニックネームでOK）',P.name,'画面の挨拶に使うだけです');
+  const gr=fieldSelect('学年',P.grade||'高3',GRADES.map(g=>({value:g,label:g})));
+  const hs=fieldText('高校名（任意）',P.school);
+  const fd=fieldText('興味のある分野（任意）',P.field,'例：教育 / 情報 / 国際');
+  b.append(nm,gr,hs,fd);
+  return {get:()=>({name:nm.get(),grade:gr.get(),school:hs.get(),field:fd.get()})};
+}
+function openOnboarding(){
+  openSheet('ようこそ 👋',(b,close)=>{
+    b.appendChild(el('p','small muted','はじめに、あなたのことを少しだけ教えてください。あとから「設定」でいつでも変えられます。'));
+    const F=profileFields(b,S.profile||{});
+    b.appendChild(el('div','note','🔒 ここに書いた内容はこの端末に保存されます（ログインすると、あなたのアカウントにだけ同期されます）。本名や学校名を書きたくなければ、ニックネームや空欄で大丈夫です。'));
+    const ok=el('button','btn primary block','はじめる'); ok.style.marginTop='10px';
+    ok.onclick=()=>{ const v=F.get();
+      S.profile=Object.assign({},S.profile,v,{onboarded:true,createdAt:(S.profile&&S.profile.createdAt)||Date.now()});
+      save(); close(); toast(v.name?v.name+'さん、はじめましょう':'はじめましょう','ok'); render(); };
+    const skip=el('button','btn ghost block','あとで入力する'); skip.style.marginTop='8px';
+    skip.onclick=()=>{ S.profile=Object.assign({},S.profile,{onboarded:true}); save(); close(); render(); };
+    b.append(ok,skip);
+  });
+}
+/* すでに使っている人には出しません（データが空のときだけ最初に出ます） */
+function maybeOnboard(){
+  if(typeof window!=='undefined'&&window.__AO_NO_ONBOARD) return;   /* 自動テスト用の逃げ道 */
+  const P=S.profile||{};
+  if(P.onboarded) return;
+  if(!isEmptyState(S)){ S.profile=Object.assign({},P,{onboarded:true}); save(); return; }
+  setTimeout(()=>{ try{ if(!$('#overlay').classList.contains('open')) openOnboarding(); }catch(e){} },600);
+}
+
+function vSettings(){
+  const w=el('div','view');
+  w.appendChild(pageHead('設定','プロフィール・表示・AI・データ'));
+
+  /* --- プロフィール --- */
+  const P=S.profile||{};
+  const pc=el('div','card'); pc.innerHTML='<div class="card-title"><span class="ic">👤</span><h3>プロフィール</h3></div>';
+  const F=profileFields(pc,P);
+  const gl=fieldText('将来やりたいこと（任意）',P.goal,'書類や面接の材料にもなります',{area:true,rows:2}); pc.appendChild(gl);
+  const gw=el('label','small'); gw.style.cssText='display:flex;align-items:center;gap:7px;margin:6px 0 2px;cursor:pointer';
+  const gc=el('input'); gc.type='checkbox'; gc.style.cssText='width:17px;height:17px;flex:none'; gc.checked=(S.prefs&&S.prefs.greet!==false);
+  gw.append(gc,el('span',null,'ホームで名前を呼びかける')); pc.appendChild(gw);
+  const ps=el('button','btn primary sm block','プロフィールを保存'); ps.style.marginTop='8px';
+  ps.onclick=()=>{ S.profile=Object.assign({},S.profile,F.get(),{goal:gl.get(),onboarded:true});
+    S.prefs=Object.assign({},S.prefs,{greet:gc.checked}); commit('保存しました'); };
+  pc.appendChild(ps); w.appendChild(pc);
+
+  /* --- 表示 --- */
+  const dc0=el('div','card'); dc0.innerHTML='<div class="card-title"><span class="ic">🔤</span><h3>表示</h3></div><p class="small muted">文字の大きさ</p>';
+  const row0=el('div','btn-row'); row0.style.marginTop='6px';
+  TEXT_SIZES.forEach(([v,lb])=>{ const cur=((S.prefs&&S.prefs.textSize)||'m')===v;
+    const b=el('button','btn sm '+(cur?'primary':'ghost'),lb);
+    b.onclick=()=>{ S.prefs=Object.assign({},S.prefs,{textSize:v}); save(); applyPrefs(); render(); };
+    row0.appendChild(b); });
+  dc0.appendChild(row0);
+  const ad=fieldText('締切の何日前から赤く表示するか',String(alertDays()),'例：14',{type:'number'});
+  dc0.appendChild(ad);
+  const adb=el('button','btn sm','この日数で表示する');
+  adb.onclick=()=>{ const n=+ad.get()||14; S.prefs=Object.assign({},S.prefs,{alertDays:Math.min(180,Math.max(1,n))}); commit('表示を変更しました'); };
+  dc0.appendChild(adb); w.appendChild(dc0);
+
+  /* --- アカウント --- */
+  if(cloudConfigured()){
+    const ac=el('div','card'); ac.innerHTML='<div class="card-title"><span class="ic">☁️</span><h3>アカウント（クラウド保存）</h3>'+(sbUser?'<span class="badge ok">ログイン中</span>':'<span class="badge grey">未ログイン</span>')+'</div>';
+    ac.appendChild(el('p','small muted',sbUser?('ログイン中：'+esc(sbUser.email)+'。入力データは自動でクラウド保存され、別の端末でも同じログインで続きから使えます。'):'メールとパスワードでアカウントを作ると、データがクラウドに保存され、スマホでもPCでも同じログインで続きから使えます。'));
+    const ab=el('button','btn '+(sbUser?'':'teal')+' sm block',sbUser?'アカウント設定 / ログアウト':'ログイン / 新規登録'); ab.style.marginTop='8px'; ab.onclick=()=>openAuthSheet(); ac.appendChild(ab);
+    ac.appendChild(el('p','xsmall muted','ログアウトすると、この端末に保存されたこのアカウントのデータは削除されます（クラウドには残ります）。共用のパソコンでも安心して使えます。'));
+    w.appendChild(ac);
+  }
+
+  /* --- プラン --- */
+  if(BILLING.enabled){
+    const bc=el('div','card'); bc.innerHTML='<div class="card-title"><span class="ic">✨</span><h3>プラン</h3><span class="badge '+(isPro()?'ok':'grey')+'">'+esc(planName())+'</span></div>';
+    const bb=el('button','btn '+(isPro()?'':'teal')+' sm block',isPro()?'プランの詳細を見る':'プラスを見る / コードを登録'); bb.style.marginTop='8px'; bb.onclick=()=>openBillingSheet(); bc.appendChild(bb); w.appendChild(bc);
+  }
+
+  /* --- AI接続 --- */
+  const aic=el('div','card'); aic.innerHTML='<div class="card-title"><span class="ic">🤖</span><h3>AI接続</h3>'+(aiReady()?'<span class="badge ok">接続済み</span>':'<span class="badge grey">未接続</span>')+'</div>';
+  aic.appendChild(el('p','small muted',aiReady()?('接続済み：'+esc(aiLabel())+'（モデル：'+esc(AICFG.model||defaultModel(AICFG.provider))+'）。各AI機能で本物のAIが応答します。'):'未接続。ご自身のAPIキーを登録すると、本物の生成AI（Claude / GPT）が添削・分析します。未接続でも簡易AIで動作します。'));
+  const abtn=el('button','btn '+(aiReady()?'':'teal')+' sm block','AI接続の設定を開く'); abtn.style.marginTop='8px'; abtn.onclick=()=>openAISettings(); aic.appendChild(abtn); w.appendChild(aic);
+
+  /* --- 使用量 --- */
+  w.appendChild(usageCard());
+
+  /* --- データ管理 --- */
+  const dc=el('div','card'); dc.innerHTML='<div class="card-title"><span class="ic">💾</span><h3>データ管理</h3></div><p class="small muted">データはこのブラウザ内に保存されます（ログイン中はクラウドにも保存されます）。</p>';
+  const row=el('div','btn-row'); row.style.marginTop='10px';
+  const demo=el('button','btn','デモデータを読み込む'); demo.onclick=()=>confirmDelete('現在のデータを消してデモデータを読み込みます。よろしいですか？',loadDemo);
+  const exp=el('button','btn ghost','バックアップ書き出し'); exp.onclick=exportData;
+  const imp=el('button','btn ghost','読み込み'); imp.onclick=importData;
+  const del=el('button','btn danger','すべてのデータを削除'); del.onclick=()=>confirmDelete('すべてのデータ（志望校・書類・自己分析など）を完全に削除します。取り消せません。',()=>{S=blankState();S.profile.onboarded=true;save();toast('削除しました','ok');go('home');});
+  row.append(demo,exp,imp,del); dc.appendChild(row);
+  dc.appendChild(el('p','xsmall muted','※ バックアップにはAIのAPIキーは含まれません（安全のため）。'));
+  w.appendChild(dc);
+
+  w.appendChild(privacyNote());
+
+  /* --- バージョン --- */
+  const vc=el('div','card tight');
+  vc.innerHTML='<div class="small" style="font-weight:800;color:var(--navy)">バージョン</div><p class="xsmall muted" style="margin:4px 0 6px">現在のバージョン：<b>'+esc(APP_VER)+'</b><br>アプリを更新しても、入力したデータはこの端末に残ります。最新版が反映されないときは下のボタンを押してください。</p>';
+  const rb=el('button','btn sm block','🔄 最新版を読み込み直す');
+  rb.onclick=()=>{ try{ flushAutosave(); }catch(e){} const u=location.href.split('#')[0].split('?')[0]+'?v='+Date.now(); location.replace(u); };
+  vc.appendChild(rb); w.appendChild(vc);
+  const about=el('div','card tight'); about.innerHTML='<p class="xsmall muted">AO Compass（試作版）｜総合型選抜の伴走アプリ。AIは合否を判断せず、あなたの経験や実績を捏造しません。最終的な提出内容は必ずご自身で確認し、先生・指導者にも確認してもらいましょう。デモの大学名・要項はすべて架空です。</p>'; w.appendChild(about);
+  return w;
+}
+
+/* 使用量カード（設定の中に置きます） */
+function usageCard(){
+  const c=el('div','card'); c.innerHTML='<div class="card-title"><span class="ic">📟</span><h3>AIの使用量と概算コスト</h3></div>';
+  const U=usageStats();
+  if(!U.all.n){
+    c.appendChild(el('p','small muted','まだ本物のAIを使っていません。ここに、使った回数・トークン数・おおよその料金が出ます。APIキーを使わない「簡易チェック」は無料なので数えません。'));
+  } else {
+    const mk=(ttl,o)=>{ const r=el('div','card tight'); r.style.marginBottom='8px';
+      r.innerHTML='<div class="small" style="font-weight:800;color:var(--navy)">'+esc(ttl)+'</div>'
+        +'<p class="xsmall muted" style="margin:3px 0 0">'+o.n+'回 ／ 入力 '+o.i.toLocaleString()+' ／ 出力 '+o.o.toLocaleString()+' トークン</p>'
+        +'<p class="small" style="margin:2px 0 0;font-weight:900;color:var(--navy)">概算 '+yen(o.y)+(o.n?'<span class="xsmall muted" style="font-weight:700">（1回あたり '+yen(o.y/o.n)+'）</span>':'')+'</p>';
+      return r; };
+    c.appendChild(mk('今月',U.month));
+    c.appendChild(mk('全期間',U.all));
+    const d=el('details','acc'); d.innerHTML='<summary>直近の利用（'+U.recent.length+'件）</summary>';
+    const bd=el('div','acc-body');
+    U.recent.forEach(r=>{ const x=el('div','list-row');
+      x.innerHTML='<div style="flex:1"><b class="small">'+esc(r.l||'AI分析')+'</b><div class="xsmall muted">'+esc(fmtDT(r.at))+' ／ '+esc(r.m||r.p||'')+'</div></div><span class="badge grey">'+yen(usageCost(r,U.rate))+'</span>';
+      bd.appendChild(x); });
+    d.appendChild(bd); c.appendChild(d);
+  }
+  const d2=el('details','acc'); d2.innerHTML='<summary>料金の単価を設定する</summary>';
+  const b2=el('div','acc-body');
+  b2.appendChild(el('p','xsmall muted','ご利用のAIの料金表（100万トークンあたりの米ドル）を入れると、概算がより正確になります。既定値は目安です。'));
+  const fi=fieldText('入力 $/100万トークン',String(U.rate.in),null,{type:'number'});
+  const fo=fieldText('出力 $/100万トークン',String(U.rate.out),null,{type:'number'});
+  const fj=fieldText('為替（1ドル＝◯円）',String(U.rate.jpy),null,{type:'number'});
+  b2.append(fi,fo,fj);
+  const sv=el('button','btn sm primary','単価を保存'); sv.onclick=()=>{ saveRates({in:+fi.get()||0,out:+fo.get()||0,jpy:+fj.get()||155}); toast('保存しました','ok'); render(); };
+  const rs=el('button','btn sm danger','記録を消す'); rs.onclick=()=>confirmDelete('AIの使用量の記録を消します。料金の請求そのものには影響しません。',()=>{ try{ localStorage.removeItem(USE_KEY); }catch(e){} toast('消しました','ok'); render(); });
+  const rw=el('div','btn-row'); rw.style.marginTop='8px'; rw.append(sv,rs); b2.appendChild(rw);
+  d2.appendChild(b2); c.appendChild(d2);
+  c.appendChild(el('p','xsmall muted','※ これはこの端末での概算です。正確な請求額は、各AIプロバイダーの管理画面をご確認ください。'));
+  return c;
+}
+
 /* =========================================================================
    その他メニュー
    ========================================================================= */
@@ -2543,8 +2962,10 @@ function vMore(){
   tiles.forEach(([v,em,t,s])=>{ const b=el('button','menu-tile'); b.innerHTML=`<div class="em">${em}</div><b>${esc(t)}</b><span>${esc(s)}</span>`; b.onclick=()=>go(v); grid.appendChild(b); });
   w.appendChild(grid);
   w.appendChild(el('hr','sep'));
-  // アカウント（クラウド保存）
-  if(cloudConfigured()){
+  // 設定へ
+  const sc=el('div','card'); sc.innerHTML='<div class="card-title"><span class="ic">⚙️</span><h3>設定</h3></div><p class="small muted">プロフィール、文字の大きさ、AI接続、使用量、アカウント、データの書き出しや削除はこちらにまとめました。</p>';
+  const sbn=el('button','btn primary sm block','⚙️ 設定を開く'); sbn.style.marginTop='8px'; sbn.onclick=()=>go('settings'); sc.appendChild(sbn); w.appendChild(sc);
+  if(false){
     const ac2=el('div','card'); ac2.innerHTML='<div class="card-title"><span class="ic">☁️</span><h3>アカウント（クラウド保存）</h3></div>';
     if(sbUser) ac2.appendChild(el('p','small muted','ログイン中：'+esc(sbUser.email)+'。入力データは自動でクラウド保存され、別の端末でも同じログインで続きから使えます。'));
     else ac2.appendChild(el('p','small muted','メールとパスワードでアカウントを作ると、データがクラウドに保存され、スマホでもPCでも同じログインで続きから使えます。'));
@@ -2552,26 +2973,12 @@ function vMore(){
     w.appendChild(el('hr','sep'));
   }
   // 料金プラン
-  if(BILLING.enabled){
+  if(false&&BILLING.enabled){
     const bc=el('div','card'); bc.innerHTML='<div class="card-title"><span class="ic">✨</span><h3>プラン</h3><span class="badge '+(isPro()?'ok':'grey')+'">'+esc(planName())+'</span></div>';
     bc.appendChild(el('p','small muted',isPro()?('プラスをご利用中です。逆算プランの3種類（じっくり育成／総仕上げ／直前詰め込み）をすべて使えます。'+(ENT.until?'有効期限：'+fmtDate(ENT.until):'')):'無料プランでは「🎯 総仕上げプラン（3〜4ヶ月）」が使えます。「🌱 じっくり育成プラン（1年以上前から）」「🔥 直前詰め込みプラン」はプラスの機能です。'));
     const bb=el('button','btn '+(isPro()?'':'teal')+' sm',isPro()?'プランの詳細を見る':'プラスを見る / コードを登録'); bb.style.marginTop='8px'; bb.onclick=()=>openBillingSheet(); bc.appendChild(bb); w.appendChild(bc);
     w.appendChild(el('hr','sep'));
   }
-  // AI接続
-  const aic=el('div','card'); aic.innerHTML='<div class="card-title"><span class="ic">🤖</span><h3>AI接続</h3></div>';
-  if(aiReady()) aic.appendChild(el('p','small muted','接続済み：'+esc(aiLabel())+'（モデル：'+esc(AICFG.model||defaultModel(AICFG.provider))+'）。各AI機能で本物のAIが応答します。'));
-  else aic.appendChild(el('p','small muted','未接続。ご自身のAPIキーを登録すると、本物の生成AI（Claude / GPT）が添削・分析します。未接続でも簡易AIで動作します。'));
-  const abtn=el('button','btn '+(aiReady()?'':'teal')+' sm','AI接続の設定を開く'); abtn.style.marginTop='8px'; abtn.onclick=()=>openAISettings(); aic.appendChild(abtn); w.appendChild(aic);
-  w.appendChild(el('hr','sep'));
-  // データ管理
-  const dc=el('div','card'); dc.innerHTML='<div class="card-title"><span class="ic">💾</span><h3>データ管理</h3></div><p class="small muted">データはこのブラウザ内にのみ保存されます。</p>';
-  const row=el('div','btn-row'); row.style.marginTop='10px';
-  const demo=el('button','btn','デモデータを読み込む'); demo.onclick=()=>confirmDelete('現在のデータを消してデモデータを読み込みます。よろしいですか？',loadDemo);
-  const exp=el('button','btn ghost','バックアップ書き出し'); exp.onclick=exportData;
-  const imp=el('button','btn ghost','読み込み'); imp.onclick=importData;
-  const del=el('button','btn danger','すべてのデータを削除'); del.onclick=()=>confirmDelete('すべてのデータ（志望校・書類・自己分析など）を完全に削除します。取り消せません。',()=>{S=blankState();save();toast('削除しました','ok');go('home');});
-  row.append(demo,exp,imp,del); dc.appendChild(row); w.appendChild(dc);
   w.appendChild(privacyNote());
   const vc=el('div','card tight');
   vc.innerHTML='<div class="small" style="font-weight:800;color:var(--navy)">バージョン</div><p class="xsmall muted" style="margin:4px 0 6px">現在のバージョン：<b>'+esc(APP_VER)+'</b><br>アプリを更新しても、入力したデータはこの端末に残ります。最新版が反映されないときは下のボタンを押してください。</p>';
@@ -2609,7 +3016,7 @@ function vSelf(){
   drawProg(); w.appendChild(pc);
   SELF_Q.forEach(q=>{ const det=el('details','acc'); if(S.self.answers[q.id])det.open=false;
     const badge=()=>S.self.answers[q.id]?'<span class="badge ok">回答済</span>':'<span class="badge grey">未回答</span>';
-    det.innerHTML=`<summary>${badge()} ${esc(q.q)}</summary>`; const body=el('div','acc-body');
+    det.innerHTML=`<summary><span class="smt">${badge()}<span>${esc(q.q)}</span></span></summary>`; const body=el('div','acc-body');
     const ta=el('textarea','input'); ta.rows=4; ta.value=S.self.answers[q.id]||''; ta.setAttribute('aria-label',q.q);
     body.appendChild(ta);
     const st=saveStatusEl();
@@ -3332,7 +3739,9 @@ async function callAI(system,user,opts={}){
         headers:{'content-type':'application/json','x-api-key':AICFG.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
         body:JSON.stringify({model:AICFG.model||defaultModel('anthropic'),max_tokens:opts.max||1800,system,messages:[{role:'user',content:user}]})});
       if(!res.ok) throw new Error(await friendlyErr(res));
-      const d=await res.json(); return (d.content||[]).map(c=>c.text||'').join('').trim();
+      const d=await res.json(); const tx=(d.content||[]).map(c=>c.text||'').join('').trim();
+      try{ recordUsage('anthropic',AICFG.model||defaultModel('anthropic'),(d.usage&&d.usage.input_tokens)||Math.round((String(system).length+String(user).length)/2),(d.usage&&d.usage.output_tokens)||Math.round(tx.length/2),opts.label||''); }catch(e){}
+      return tx;
     } else {
       const base=(AICFG.baseURL||'https://api.openai.com/v1').replace(/\/+$/,'');
       const body={model:AICFG.model||defaultModel('openai'),messages:[{role:'system',content:system},{role:'user',content:user}]};
@@ -3340,7 +3749,9 @@ async function callAI(system,user,opts={}){
       const res=await fetch(base+'/chat/completions',{method:'POST',signal:controller.signal,
         headers:{'content-type':'application/json','authorization':'Bearer '+AICFG.key},body:JSON.stringify(body)});
       if(!res.ok) throw new Error(await friendlyErr(res));
-      const d=await res.json(); return (d.choices&&d.choices[0]&&d.choices[0].message.content||'').trim();
+      const d=await res.json(); const tx=(d.choices&&d.choices[0]&&d.choices[0].message.content||'').trim();
+      try{ recordUsage(prov,AICFG.model||defaultModel('openai'),(d.usage&&d.usage.prompt_tokens)||Math.round((String(system).length+String(user).length)/2),(d.usage&&d.usage.completion_tokens)||Math.round(tx.length/2),opts.label||''); }catch(e){}
+      return tx;
     }
   }catch(e){ if(e.name==='AbortError') throw new Error('応答がタイムアウトしました。通信環境を確認して再試行してください。'); throw e; }
   finally{ clearTimeout(to); }
@@ -3403,15 +3814,19 @@ function openAISettings(){
 /* ---- 本物のAIによる各機能 ---- */
 async function runAnalyzeAI(text,ctx){
   const isPres=ctx.docType==='プレゼン資料';
-  const sys=AI_RULES+'\n\n出力は日本語で、次のJSONのみ（コードブロックや前置き・後置きの文章を付けない）：\n'
+  let sys=AI_RULES+'\n\n出力は日本語で、次のJSONのみ（コードブロックや前置き・後置きの文章を付けない）：\n'
     +'{"good":[{"quote":"本文からの引用","why":"なぜ効いているか／どう伸ばせるか"}],'
     +'"priorities":["最優先で直すこと(最大3件、短い見出し)"],'
     +'"scores":{"具体性":0,"一貫性":0,"独自性":0,"志望校との接続":0,"論理性":0,"読みやすさ":0,"設問への適合":0,"本人らしさ":0},'
     +'"structure":[{"para":1,"role":"その段落が実際に果たしている役割","issue":"役割上の問題。無ければ空文字"}],'
     +'"missing":["この設問に答えるうえで必要なのに、本文に書かれていない要素"],'
+    +'"judge":{"q1":{"a":"yes|partly|no","why":"いまの本文でそう判定した理由","fix":"はいにするために本人が足すこと"},"q2":{"a":"","why":"","fix":""},"q3":{"a":"","why":"","fix":""},"q4":{"a":"","why":"","fix":""}},'
     +'"interview":["この書類のままだと面接で突っ込まれる点"],'
     +'"findings":[{"sev":"must|important|check","cat":"論理|具体性|独自性|志望校接続|設問適合|読みやすさ|事実確認","quote":"本文から一字一句そのまま引用(30字以内。本文全体に関わる指摘なら空文字)","title":"指摘の見出し(体言止めでなく、何が起きているかが分かる一文)","why":"なぜ問題か。入試の読み手にどう受け取られるかまで書く","how":"どう直すか。本人が次に取る手順として具体的に。ただし完成した文章そのものは書かない","q":"本人にしか答えられない質問"}]}\n'
     +'各scoreは0〜100の整数。sevは、提出前に必須=must、重要=important、要確認=check。\n'
+    +'judgeは「良い志望理由書の判断基準」です。読んだ人が次の4つすべてに「はい」と答えられる状態が理想で、q1〜q4はこの順に対応します。'
+    +'q1=なぜその分野に興味を持ったのか分かる／q2=なぜその大学・学部なのか分かる／q3=大学で何を学びたいのか分かる／q4=卒業後その学びをどう生かすのか分かる。'
+    +'aは、はっきり読み取れる=yes、触れているが弱い・抽象的=partly、書かれていない=no。甘くつけない。whyは本文の該当箇所に基づいて書く。fixは本人が次に足すことを1文で。\n'
     +'findingsは8〜12件。うちmustとimportantを合わせて4件以上。数合わせのために薄い指摘を足すのではなく、下の観点を順に当てれば必ずその数になる。\n'
     +'必ず次の観点を一通り点検し、当てはまるものを指摘に含めること：\n'
     +'(1)主張と根拠のつながり：「〜と考えた」「〜を学んだ」の直前に、そう考えるに至る事実が書かれているか。飛躍していないか。\n'
@@ -3424,9 +3839,21 @@ async function runAnalyzeAI(text,ctx){
     +'(8)設問との対応：設問が聞いていることに正面から答えているか。聞かれていないことに字数を使っていないか。\n'
     +'(9)事実確認：数値・期間・役割が曖昧で、面接で確認されそうな箇所。\n'
     +'(10)読みやすさ：一文が長すぎる箇所、主語が入れ替わる箇所を引用して挙げる。\n'
+    +'(11)問題意識：「好きだから」「興味があるから」で止まっていないか。好き→疑問→課題→学びたい、の流れになっているか。興味ではなく問題意識から始まっているかを見る。\n'
+    +'(12)きっかけの具体性：「ニュースを見て」のような受け身のきっかけは弱い。実際に本人が動いた・体験した出来事になっているかを見る。\n'
+    +'(13)経験→気づき→課題意識のつながり：何をしたか（実績）ではなく、何を経験し／何を考え／何が課題だと思ったかの流れになっているか。活動を並べただけになっていないか。\n'
+    +'(14)大学で学ぶ必要性：独学や読書では足りず、その大学だからこそ学べる理由が、授業・教授・ゼミ・研究内容と結びついて書かれているか。\n'
+    +'(15)学ぶ内容の具体度：「法律を学びたい」のような広い書き方は浅い。「国際人権法」「知的財産法」「環境法」のように分野名まで落とし込めているかを見る。落とし込めていなければ指摘する。\n'
+    +'(16)将来像の現実性：「世界平和に貢献したい」のような抽象語で終わっていないか。「国際機関で〇〇に携わりたい」のように、場所・相手・手段のどれかが入っているか。\n'
+    +'(17)軸の一貫性：国際問題→音楽→経済→AIのように話題が飛んでいないか。一つのテーマを深掘りできているか。\n'
+    +'(18)志望理由と自己PRの混同：自己PR＝自分の強み、志望理由＝大学で学ぶ理由。志望理由書に強みの自慢が入り込んでいないか。\n'
+    +'(19)構成：1きっかけ 2経験 3気づき 4課題意識 5大学で学びたいこと 6将来どう生かすか、のどれが抜けているか。\n'
+    +'(20)「何を学ぶか」より「なぜ学ぶのか」：多くの受験生は学びたい内容を書ける。差がつくのは、その背景にある理由や価値観なので、そこが薄ければ最優先で指摘する。\n'
     +'quoteは必ず本文に実在する文字列をそのままコピーすること。要約や言い換えを入れない。\n'
     +'structureは本文を段落（改行区切り。無ければ意味のまとまり）ごとに分け、それぞれが実際に果たしている役割を書く。書き手の意図ではなく、読み手にどう読めるかを書くこと。\n'
-    +'howでは、本人が埋めるべき内容を指示するにとどめ、代わりに書いた文例は出さないこと。';
+    +'howでは、本人が埋めるべき内容を指示するにとどめ、代わりに書いた文例は出さないこと。\n'
+    +'複数の設問を課す大学（慶應義塾大学など、志望理由書と別に学習計画や自己申告書を求める場合）では、設問ごとに役割が分かれている前提で見る。いま与えられた設問が聞いていないことに字数を使っていれば、それは他の設問で書くべき内容として指摘する。';
+  if(/(学習計画|研究計画|入学後|履修計画|学修計画)/.test(String(ctx.docType||'')+' '+(ctx.question||''))) sys+='\nこれは「学習計画・研究計画」を含む設問です。次も重視：①1年次から4年次まで、いつ何を学ぶかが順序立てて書かれているか ②実在する科目名・ゼミ名・研究室名に基づいているか（与えられた資料に無い名称を新たに作らないこと） ③志望理由に書いた課題意識と、学ぶ順番がつながっているか ④卒業研究・卒業論文で扱いたいテーマが具体的か ⑤留学・資格・インターンなど授業外の計画が現実的か ⑥4年間で本当に実行できる分量か。抜けている年次や段階があれば指摘する。';
   if(isPres) sys+='\nこれはプレゼン用スライド資料です（本文は【スライドn】ごとの文字）。次も重視：1スライド1メッセージか、結論・主張が先に伝わるか、文字が多すぎないか（口頭説明との役割分担）、具体例や数字があるか、話の流れに一貫性があるか、志望理由や活動との整合、想定質疑への備え。findingsでは該当スライド番号にも触れる。';
   let u='次の出願書類の文章を分析してください。\n【設問】'+(ctx.question||'（指定なし）')+'\n';
   if(ctx.charLimit)u+='【文字数制限】'+ctx.charLimit+'字（現在 '+countJP(text)+'字）\n'; else u+='【現在の文字数】'+countJP(text)+'字\n';
@@ -3443,44 +3870,36 @@ function renderAnalysisReal(b,a,text,opts){
   opts=opts||{};
   const _doc=opts.doc||(typeof _analyzeDoc!=='undefined'?_analyzeDoc:null);
   if(!opts.noNote){ const note=el('div','note'); note.innerHTML='🤖 <b>'+esc(opts.label||aiLabel())+'による分析です。</b>AIは経験を捏造しません。指摘に沿って、あなた自身の言葉で直してください。提出前に本人・先生の確認を。'; b.appendChild(note); }
-  if(a.good&&a.good.length){ const g=el('div','card tight'); g.innerHTML='<h4>👍 効いている所</h4>';
+  if(a.scores){ tgCard(b,{icon:'📋',title:'評価シート',right:'合否予測ではありません',key:'an.score',open:true,accent:'navy'},(sc)=>{
+    renderScoreCard(sc,a.scores,{doc:_doc,text:text,noHistory:!!opts.noHistory,kind:'ai'}); }); }
+  renderJudge(b,a.judge,'an');
+  if(a.priorities&&a.priorities.length){ tgCard(b,{icon:'🚩',title:'まず直すべきこと',right:Math.min(3,a.priorities.length)+'件',key:'an.prio',open:true,accent:'orange'},(na)=>{
+    const ol=el('ol');ol.style.cssText='padding-left:20px;margin:0'; a.priorities.slice(0,3).forEach(x=>{const li=el('li','small');li.style.marginBottom='4px';li.textContent=hwText(x);ol.appendChild(li);}); na.appendChild(ol); }); }
+  if(a.good&&a.good.length){ tgCard(b,{icon:'👍',title:'効いている所',right:a.good.length+'件',key:'an.good',open:false},(g)=>{
     a.good.forEach(x=>{
       if(x&&typeof x==='object'){
         if(x.quote){ const q=el('div','qt'); q.innerHTML='<span class="qlbl">本文より</span><b>「'+esc(x.quote)+'」</b>'; g.appendChild(q); }
         g.appendChild(el('p','small',esc(x.why||x.title||'')));
       } else { g.appendChild(el('p','small','・'+esc(x))); }
-    });
-    b.appendChild(g); }
-  if(a.scores){ const sc=el('div','card tight'); sc.appendChild(el('h4',null,'評価シート（合否予測ではありません）')); renderScoreCard(sc,a.scores,{doc:_doc,text:text,noHistory:!!opts.noHistory,kind:'ai'}); b.appendChild(sc); }
-  if(a.priorities&&a.priorities.length){ const na=el('div','card tight');na.style.borderLeft='3px solid var(--orange)';na.innerHTML='<h4>🚩 まず直すべきこと</h4>'; const ol=el('ol');ol.style.paddingLeft='20px'; a.priorities.slice(0,3).forEach(x=>{const li=el('li','small');li.textContent=hwText(x);ol.appendChild(li);}); na.appendChild(ol); b.appendChild(na); }
+    }); }); }
   { const hl=(a.priorities&&a.priorities.length)?a.priorities:(a.findings||[]).filter(f=>f.sev==='must'||f.sev==='important').map(f=>f.title);
     renderHomeworkBar(b,hl,_doc); }
   /* 段落ごとに、実際どう読めているか */
-  if(a.structure&&a.structure.length){ const st=el('div','card tight'); st.innerHTML='<h4>🧱 段落ごとの役割（読み手にどう読めるか）</h4>';
+  if(a.structure&&a.structure.length){ const ng=a.structure.filter(p=>p&&p.issue).length;
+    tgCard(b,{icon:'🧱',title:'段落ごとの役割',right:a.structure.length+'段落'+(ng?'／要改善'+ng:''),key:'an.struct',open:false},(st)=>{
     a.structure.forEach((p,i)=>{ const r=el('div','pararow');
       const no=el('div','parano',String(p.para||i+1)); const tx=el('div'); tx.style.flex='1';
       tx.innerHTML='<div class="small" style="font-weight:700">'+esc(p.role||'')+'</div>'+(p.issue?'<div class="xsmall" style="color:#b4573f;margin-top:2px">⚠ '+esc(p.issue)+'</div>':'');
-      r.append(no,tx); st.appendChild(r); });
-    b.appendChild(st); }
+      r.append(no,tx); st.appendChild(r); }); }); }
   /* 設問に答えるのに要るのに、まだ書かれていないこと */
-  if(a.missing&&a.missing.length){ const ms=el('div','card tight'); ms.style.borderLeft='3px solid var(--teal)';
-    ms.innerHTML='<h4>🕳 まだ書かれていないこと</h4><p class="xsmall muted" style="margin:2px 0 6px">ここを埋めると、内容そのものが増えます。</p>';
-    const ul=el('ul'); ul.style.paddingLeft='18px'; a.missing.forEach(x=>{ const li=el('li','small'); li.style.marginBottom='3px'; li.textContent=hwText(x); ul.appendChild(li); });
-    ms.appendChild(ul); b.appendChild(ms); }
-  const SEVR={must:0,important:1,check:2};
-  const FDS=(a.findings||[]).slice().sort((x,y)=>(SEVR[x&&x.sev]==null?3:SEVR[x.sev])-(SEVR[y&&y.sev]==null?3:SEVR[y.sev]));
-  if(FDS.length) b.appendChild(el('h4',null,'🔍 指摘（'+FDS.length+'件）'));
-  FDS.forEach(fd=>{ const det=el('details','acc'); const sev=fd.sev==='must'?'<span class="badge alert">提出前に必須</span>':fd.sev==='important'?'<span class="badge warn">重要</span>':'<span class="badge grey">要確認</span>';
-    const cat=fd.cat?'<span class="badge grey">'+esc(fd.cat)+'</span> ':'';
-    det.innerHTML=`<summary>${sev} ${cat}${esc(fd.title||'')}</summary>`;
-    const bd=el('div','acc-body small'); bd.innerHTML=`${fd.quote?`<div class="qt"><span class="qlbl">本文の該当箇所</span><b>「${esc(fd.quote)}」</b></div>`:''}${fd.why?`<p><b>なぜ：</b>${esc(fd.why)}</p>`:''}${fd.how?`<p><b>どう直す：</b>${esc(fd.how)}</p>`:''}${fd.q?`<div class="ai-note">🤔 ${esc(fd.q)}</div>`:''}`;
-    const hb=el('button','btn sm block','📌 これを明日までの宿題にする');
-    hb.onclick=()=>{ const n=makeHomework([fd],_doc,1); toast(n?'明日までの宿題にしました':'すでに登録されています','ok'); };
-    bd.appendChild(hb); det.appendChild(bd); b.appendChild(det); });
-  if(a.interview&&a.interview.length){ const iv=el('div','card tight'); iv.style.borderLeft='3px solid var(--orange)';
-    iv.innerHTML='<h4>🎤 このままだと面接で聞かれる所</h4>';
-    const ul=el('ul'); ul.style.paddingLeft='18px'; a.interview.forEach(x=>{ const li=el('li','small'); li.style.marginBottom='3px'; li.textContent=hwText(x); ul.appendChild(li); });
-    iv.appendChild(ul); iv.appendChild(el('p','xsmall muted','答えられない質問があるなら、それはまだ書類に書けていない部分です。')); b.appendChild(iv); }
+  if(a.missing&&a.missing.length){ tgCard(b,{icon:'🕳',title:'まだ書かれていないこと',right:a.missing.length+'件',key:'an.miss',open:false,accent:'teal'},(ms)=>{
+    ms.appendChild(el('p','xsmall muted','ここを埋めると、内容そのものが増えます。'));
+    const ul=el('ul'); ul.style.cssText='padding-left:18px;margin:4px 0 0'; a.missing.forEach(x=>{ const li=el('li','small'); li.style.marginBottom='3px'; li.textContent=hwText(x); ul.appendChild(li); });
+    ms.appendChild(ul); }); }
+  renderFindings(b,a.findings,_doc);
+  if(a.interview&&a.interview.length){ tgCard(b,{icon:'🎤',title:'このままだと面接で聞かれる所',right:a.interview.length+'問',key:'an.iv',open:false,accent:'orange'},(iv)=>{
+    const ul=el('ul'); ul.style.cssText='padding-left:18px;margin:0'; a.interview.forEach(x=>{ const li=el('li','small'); li.style.marginBottom='3px'; li.textContent=hwText(x); ul.appendChild(li); });
+    iv.appendChild(ul); iv.appendChild(el('p','xsmall muted','答えられない質問があるなら、それはまだ書類に書けていない部分です。')); }); }
   b.appendChild(el('p','xsmall muted','※AIの評価は参考です。合否を保証するものではありません。'));
 }
 /* AI分析の結果は書類ごとに保存します。閉じても消えないので、開き直すたびにAPIを使わずに済みます。 */
@@ -3671,6 +4090,23 @@ function renderHomeworkBar(host,list,doc){
 }
 /* ===== 模試の成績表のような「評価シート」 ===== */
 /* 5段階の評価。合否の予測ではなく、書けている度合いの目安です。 */
+/* 開閉の状態はこの端末に覚えます（毎回たたみ直す手間をなくすため） */
+function tgOpen(key,def){ try{ const m=JSON.parse(localStorage.getItem('aoCompass_tg')||'{}'); return m[key]==null?!!def:!!m[key]; }catch(e){ return !!def; } }
+function tgSet(key,v){ try{ const m=JSON.parse(localStorage.getItem('aoCompass_tg')||'{}'); m[key]=!!v; localStorage.setItem('aoCompass_tg',JSON.stringify(m)); }catch(e){} }
+/* 見出しをタップすると中身が開くブロック。o={icon,title,right,key,open,accent} */
+function tgCard(host,o,build){
+  o=o||{};
+  const d=el('details','tg'+(o.accent?' tg-'+o.accent:''));
+  d.open=o.key?tgOpen(o.key,o.open):!!o.open;
+  const sm=el('summary');
+  sm.innerHTML='<span class="tg-t">'+(o.icon?esc(o.icon)+' ':'')+esc(o.title||'')+'</span>'+(o.right?'<span class="tg-r">'+o.right+'</span>':'');
+  d.appendChild(sm);
+  const body=el('div','tg-body'); d.appendChild(body);
+  if(o.key) d.addEventListener('toggle',()=>tgSet(o.key,d.open));
+  if(build) build(body);
+  host.appendChild(d);
+  return body;
+}
 function gradeOf(v){ v=Math.max(0,Math.min(100,+v||0)); return v>=85?'S':v>=72?'A':v>=58?'B':v>=42?'C':'D'; }
 function gradeColor(g){ return g==='S'?'#b8860b':g==='A'?'#2e8b57':g==='B'?'#128f8b':g==='C'?'#e8873b':'#b4573f'; }
 function gradeWord(g){ return g==='S'?'とても良く書けています':g==='A'?'かなり仕上がってきました':g==='B'?'土台はできています':g==='C'?'まだ直す余地が大きいです':'これから作り込みましょう'; }
@@ -3717,7 +4153,7 @@ function radarSVG(axes,size){
   return '<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="max-width:'+W+'px;height:auto" role="img" aria-label="観点別レーダーチャート">'+g+'</svg>';
 }
 /* 過去の評価を書類ごとに残す（前回比を出すため） */
-function pushScoreHistory(doc,total,text,kind){
+function pushScoreHistory(doc,total,text,kind,scores){
   if(!doc||!doc.id) return null;
   if(!Array.isArray(doc.scoreHistory)) doc.scoreHistory=[];
   kind=kind||'ai';
@@ -3725,12 +4161,31 @@ function pushScoreHistory(doc,total,text,kind){
   const h=doc.scoreHistory;
   const same=h.filter(x=>(x.kind||'ai')===kind);
   const last=same[same.length-1];
-  const prev=last?last.total:null;
-  if(last&&last.total===total&&last.len===len) return same.length>1?same[same.length-2].total:null;
-  h.push({at:Date.now(),total:total,len:len,kind:kind});
+  if(last&&last.total===total&&last.len===len) return same.length>1?same[same.length-2]:null;
+  h.push({at:Date.now(),total:total,len:len,kind:kind,scores:scores||null});
   if(h.length>20) doc.scoreHistory=h.slice(-20);
   try{ save(); }catch(e){}
-  return prev;
+  return last||null;
+}
+/* 保存済みの結果を開き直したときは、履歴を増やさずに前回だけ見ます */
+function peekScoreHistory(doc,total,kind){
+  if(!doc||!Array.isArray(doc.scoreHistory)) return null;
+  kind=kind||'ai';
+  const same=doc.scoreHistory.filter(x=>(x.kind||'ai')===kind);
+  if(!same.length) return null;
+  const li=same.length-1;
+  if(same[li].total===total) return li>0?same[li-1]:null;
+  return same[li];
+}
+function histList(doc,kind){ if(!doc||!Array.isArray(doc.scoreHistory)) return []; kind=kind||'ai'; return doc.scoreHistory.filter(x=>(x.kind||'ai')===kind); }
+/* 前回比のバッジ（＋なら緑、−なら赤） */
+function deltaChip(now,prev,small){
+  if(prev==null) return '';
+  const d=Math.round(now-prev);
+  const cls=d>0?'up':d<0?'dn':'fl';
+  const txt=(d>0?'+':'')+d;
+  return small?'<span class="dsm" style="color:'+(d>0?'#2e8b57':d<0?'#b4573f':'#8792a2')+'">'+txt+'</span>'
+    :'<span class="dchip '+cls+'">前回比 '+txt+'点</span>';
 }
 /* 評価シート本体。すべての分析画面から呼ばれます。 */
 function renderScoreCard(host,scores,opts){
@@ -3738,59 +4193,99 @@ function renderScoreCard(host,scores,opts){
   if(!scores||!Object.keys(scores).length) return;
   const norm={}; Object.entries(scores).forEach(([k,v])=>{ norm[k]=Math.max(0,Math.min(100,Math.round(+v||0))); });
   const total=overallScore(norm), G=gradeOf(total);
-  const prev=(opts.doc&&!opts.noHistory)?pushScoreHistory(opts.doc,total,opts.text||'',opts.kind):null;
+  const kind=opts.kind||'ai';
+  /* 前回の結果。開き直しただけのときは履歴を増やさずに見るだけにします。 */
+  const prevE=opts.doc?((!opts.noHistory)?pushScoreHistory(opts.doc,total,opts.text||'',kind,norm):peekScoreHistory(opts.doc,total,kind)):null;
+  const prev=prevE?prevE.total:null;
+  const pv=(prevE&&prevE.scores)||null;
   const wrap=el('div','gradesheet');
+  /* たたんでいても、ここだけは必ず見えます */
   const head=el('div','gs-head');
   const L=el('div','gs-letter',G); L.style.background=gradeColor(G);
   const meta=el('div','gs-meta');
-  let deltaHtml='';
-  if(prev!=null){ const df=total-prev;
-    deltaHtml='<div class="d" style="color:'+(df>0?'#2e8b57':df<0?'#b4573f':'#8792a2')+'">前回比 '+(df>0?'+':'')+df+'点'+(df>0?'（伸びています）':df<0?'（下がりました）':'（変化なし）')+'</div>'; }
-  meta.innerHTML='<div class="t">総合評価</div><div class="n">'+total+'<span style="font-size:13px;font-weight:700;color:var(--ink-3)"> / 100</span></div>'+deltaHtml;
+  meta.innerHTML='<div class="t">総合評価</div><div class="n">'+total+'<span style="font-size:13px;font-weight:700;color:var(--ink-3)"> / 100</span></div>'
+    +(prev!=null?'<div class="d" style="margin-top:3px">'+deltaChip(total,prev)+' <span class="xsmall" style="color:var(--ink-3)">'+(total>prev?'伸びています':total<prev?'下がりました':'変化なし')+'</span></div>':'');
   head.append(L,meta); wrap.appendChild(head);
   const wd=el('p','xsmall'); wd.style.cssText='margin:8px 0 2px;font-weight:700;color:'+gradeColor(G); wd.textContent=G+'：'+gradeWord(G);
   wrap.appendChild(wd);
-  const rad=el('div','gs-radar'); rad.innerHTML=radarSVG(radarValues(norm),250); wrap.appendChild(rad);
-  const axr=el('div','gs-axes');
-  radarValues(norm).forEach(a=>{ const c=el('span','gs-ax'); c.innerHTML=esc(a.label)+' <b style="color:'+gradeColor(gradeOf(a.value))+'">'+gradeOf(a.value)+'</b> <span style="color:var(--ink-3);font-weight:700">'+a.value+'</span>'; axr.appendChild(c); });
-  wrap.appendChild(axr);
-  const sc=el('div'); sc.style.marginTop='10px';
-  Object.entries(norm).forEach(([k,v])=>{ const bar=el('div','scorebar'); const color=gradeColor(gradeOf(v)); bar.innerHTML='<span class="lbl">'+esc(k)+'</span><span class="track"><span style="width:'+v+'%;background:'+color+'"></span></span><span class="val" style="color:'+color+'">'+gradeOf(v)+'</span>'; sc.appendChild(bar); });
-  wrap.appendChild(sc);
-  const sl=el('div','gs-scale'); sl.innerHTML='<span>S 85〜</span><span>A 72〜</span><span>B 58〜</span><span>C 42〜</span><span>D 〜41</span>';
-  wrap.appendChild(sl);
-  wrap.appendChild(el('p','xsmall muted','※この評価はアプリ内の目安であり、合否とは無関係です。大学の評価基準とは異なります。'));
+  /* 5角形と観点別は、見たいときだけ開けば足ります */
+  const rv=radarValues(norm), pvr=pv?radarValues(pv):null;
+  const weak=rv.slice().sort((a,b)=>a.value-b.value)[0];
+  tgCard(wrap,{icon:'📊',title:'観点別の評価',right:weak?'弱い：'+esc(weak.label)+' '+gradeOf(weak.value):'',key:'sc.detail.'+kind,open:false},(bd)=>{
+    const rad=el('div','gs-radar'); rad.innerHTML=radarSVG(rv,250); bd.appendChild(rad);
+    const axr=el('div','gs-axes');
+    rv.forEach((a,i)=>{ const c=el('span','gs-ax');
+      c.innerHTML=esc(a.label)+' <b style="color:'+gradeColor(gradeOf(a.value))+'">'+gradeOf(a.value)+'</b> <span style="color:var(--ink-3);font-weight:700">'+a.value+'</span>'+(pvr?deltaChip(a.value,pvr[i].value,true):'');
+      axr.appendChild(c); });
+    bd.appendChild(axr);
+    const sc=el('div'); sc.style.marginTop='10px';
+    Object.entries(norm).forEach(([k,v])=>{ const bar=el('div','scorebar'); const color=gradeColor(gradeOf(v));
+      const dl=(pv&&pv[k]!=null)?deltaChip(v,pv[k],true):'';
+      bar.innerHTML='<span class="lbl">'+esc(k)+'</span><span class="track"><span style="width:'+v+'%;background:'+color+'"></span></span><span class="val" style="color:'+color+'">'+gradeOf(v)+dl+'</span>';
+      sc.appendChild(bar); });
+    bd.appendChild(sc);
+    if(pv) bd.appendChild(el('p','xsmall muted','小さい数字は前回の分析からの増減です。'));
+    const sl=el('div','gs-scale'); sl.innerHTML='<span>S 85〜</span><span>A 72〜</span><span>B 58〜</span><span>C 42〜</span><span>D 〜41</span>';
+    bd.appendChild(sl);
+    bd.appendChild(el('p','xsmall muted','※この評価はアプリ内の目安であり、合否とは無関係です。大学の評価基準とは異なります。'));
+  });
+  /* これまでの推移。直したことが効いたかを、ここだけ見れば確かめられます。 */
+  const HL0=histList(opts.doc,kind);
+  /* 保存済みの結果を見ているときは履歴に「今回」が入っていないので、末尾に足して並べます */
+  const HL=(HL0.length&&HL0[HL0.length-1].total===total)?HL0:HL0.concat([{at:null,total:total,scores:norm,cur:true}]);
+  if(HL.length>=2){
+    const first=HL[0].total, lastT=HL[HL.length-1].total;
+    tgCard(wrap,{icon:'📈',title:'推移（'+HL.length+'回）',right:'最初から '+(lastT-first>0?'+':'')+(lastT-first)+'点',key:'sc.hist.'+kind,open:false},(bd)=>{
+      HL.slice(-8).forEach((h,i,arr)=>{ const r=el('div','histrow');
+        const pr=i>0?arr[i-1].total:null;
+        r.innerHTML='<span class="hd">'+(h.cur?'<b style="color:var(--ink)">今回</b>':esc(fmtDT(h.at).replace(/^\d+年/,'')))+'</span>'
+          +'<span class="hb"><span style="width:'+Math.max(2,h.total)+'%;background:'+gradeColor(gradeOf(h.total))+'"></span></span>'
+          +'<span class="hn" style="color:'+gradeColor(gradeOf(h.total))+'">'+h.total+(pr!=null?deltaChip(h.total,pr,true):'')+'</span>';
+        bd.appendChild(r); });
+      bd.appendChild(el('p','xsmall muted','同じ種類の分析どうしで比べています（本物のAIと簡易チェックは混ざりません）。'));
+    });
+  }
   host.appendChild(wrap);
 }
 function renderAnalysis(b,a,text){
   b.appendChild(el('div','note','AIによる参考分析です。指摘は「なぜ・どう直すか」つき。採用はあなたが決めてください。'));
-  const sc=el('div','card tight'); sc.appendChild(el('h4',null,'評価シート（合否予測ではありません）'));
-  renderScoreCard(sc,a.scores,{doc:(typeof _analyzeDoc!=='undefined'?_analyzeDoc:null),text:text,kind:'offline'}); b.appendChild(sc);
-  const na=el('div','card tight');na.style.borderLeft='3px solid var(--orange)';na.innerHTML='<h4>🚩 まず直すべきこと</h4>'; const ol=el('ol');ol.style.paddingLeft='20px'; a.nextActions.forEach(x=>{const li=el('li','small');li.textContent=x;ol.appendChild(li);});na.appendChild(ol);b.appendChild(na);
+  tgCard(b,{icon:'📋',title:'評価シート（合否予測ではありません）',key:'sm.score',open:true,accent:'navy'},(sc)=>{
+    renderScoreCard(sc,a.scores,{doc:(typeof _analyzeDoc!=='undefined'?_analyzeDoc:null),text:text,kind:'offline'}); });
+  renderJudge(b,a.judge,'sm');
+  tgCard(b,{icon:'🚩',title:'まず直すべきこと',right:a.nextActions.length+'件',key:'sm.prio',open:true,accent:'orange'},(na)=>{
+    const ol=el('ol');ol.style.cssText='padding-left:20px;margin:0'; a.nextActions.forEach(x=>{const li=el('li','small');li.style.marginBottom='4px';li.textContent=x;ol.appendChild(li);});na.appendChild(ol); });
   renderHomeworkBar(b,(a.priorities&&a.priorities.length?a.priorities:a.nextActions),(typeof _analyzeDoc!=='undefined'?_analyzeDoc:null));
-  renderMissing(b,a.missing);
-  renderFindings(b,a.findings);
+  renderMissing(b,a.missing,'sm');
+  renderFindings(b,a.findings,null,'sm');
 }
 /* 「まだ書かれていないこと」— 直すより先に、足りない材料を足すほうが早いことが多い */
-function renderMissing(b,missing){
+function renderMissing(b,missing,kb){
   if(!missing||!missing.length) return;
-  const ms=el('div','card tight'); ms.style.borderLeft='3px solid var(--teal)';
-  ms.innerHTML='<h4>🕳 まだ書かれていないこと（'+missing.length+'件）</h4><p class="xsmall muted" style="margin:2px 0 6px">直す前に、ここを足すほうが早く良くなります。</p>';
-  const ul=el('ul'); ul.style.paddingLeft='18px';
-  missing.forEach(x=>{ const li=el('li','small'); li.style.marginBottom='3px'; li.textContent=hwText(x); ul.appendChild(li); });
-  ms.appendChild(ul); b.appendChild(ms);
+  tgCard(b,{icon:'🕳',title:'まだ書かれていないこと',right:missing.length+'件',key:(kb||'an')+'.miss',open:false,accent:'teal'},(ms)=>{
+    ms.appendChild(el('p','xsmall muted','直す前に、ここを足すほうが早く良くなります。'));
+    const ul=el('ul'); ul.style.cssText='padding-left:18px;margin:4px 0 0';
+    missing.forEach(x=>{ const li=el('li','small'); li.style.marginBottom='3px'; li.textContent=hwText(x); ul.appendChild(li); });
+    ms.appendChild(ul); });
 }
 /* 指摘一覧（引用つき）。重要な順に並べます。 */
-function renderFindings(b,findings){
+function renderFindings(b,findings,doc,kb){
   const SEVR={must:0,important:1,check:2};
   const fs=(findings||[]).slice().sort((x,y)=>(SEVR[x&&x.sev]==null?3:SEVR[x.sev])-(SEVR[y&&y.sev]==null?3:SEVR[y.sev]));
   if(!fs.length) return;
-  b.appendChild(el('h4',null,'🔍 指摘（'+fs.length+'件）'));
-  fs.forEach(fd=>{ const det=el('details','acc');
-    const sev=fd.sev==='must'?'<span class="badge alert">提出前に必須</span>':fd.sev==='important'?'<span class="badge warn">重要</span>':'<span class="badge grey">要確認</span>';
-    const cat=fd.cat?'<span class="badge grey">'+esc(fd.cat)+'</span> ':'';
-    det.innerHTML=`<summary>${sev} ${cat}${esc(fd.title||'')}</summary><div class="acc-body small">${fd.quote?`<div class="qt"><span class="qlbl">本文の該当箇所</span><b>「${esc(fd.quote)}」</b></div>`:''}${fd.why?`<p><b>なぜ：</b>${esc(fd.why)}</p>`:''}${fd.how?`<p><b>どう直す：</b>${esc(fd.how)}</p>`:''}${fd.q?`<div class="ai-note">🤔 ${esc(fd.q)}</div>`:''}</div>`;
-    b.appendChild(det); });
+  const nm=fs.filter(f=>f.sev==='must').length, ni=fs.filter(f=>f.sev==='important').length;
+  const right=(nm?'必須'+nm:'')+(nm&&ni?'・':'')+(ni?'重要'+ni:'')||fs.length+'件';
+  tgCard(b,{icon:'🔍',title:'指摘（'+fs.length+'件）',right:esc(right),key:(kb||'an')+'.find',open:true},(host)=>{
+    fs.forEach(fd=>{ const det=el('details','acc');
+      const sev=fd.sev==='must'?'<span class="badge alert">提出前に必須</span>':fd.sev==='important'?'<span class="badge warn">重要</span>':'<span class="badge grey">要確認</span>';
+      const cat=fd.cat?'<span class="badge grey">'+esc(fd.cat)+'</span> ':'';
+      det.innerHTML=`<summary><span class="smt">${sev}${cat}<span>${esc(fd.title||'')}</span></span></summary>`;
+      const bd=el('div','acc-body small');
+      bd.innerHTML=`${fd.quote?`<div class="qt"><span class="qlbl">本文の該当箇所</span><b>「${esc(fd.quote)}」</b></div>`:''}${fd.why?`<p><b>なぜ：</b>${esc(fd.why)}</p>`:''}${fd.how?`<p><b>どう直す：</b>${esc(fd.how)}</p>`:''}${fd.q?`<div class="ai-note">🤔 ${esc(fd.q)}</div>`:''}`;
+      const _d=doc||(typeof _analyzeDoc!=='undefined'?_analyzeDoc:null);
+      const hb=el('button','btn sm block','📌 これを明日までの宿題にする');
+      hb.onclick=()=>{ const n=makeHomework([fd],_d,1); toast(n?'明日までの宿題にしました':'すでに登録されています','ok'); };
+      bd.appendChild(hb); det.appendChild(bd); host.appendChild(det); });
+  });
 }
 function aiIdea(){
   const QS=['その活動を始めたきっかけは何ですか？','あなた自身は具体的に何をしましたか？','最も困ったことは何ですか？','どのような工夫をしましたか？','活動の前後で、あなたの中で何が変わりましたか？','その経験は、大学で学びたいこととどうつながりますか？','それを示す具体的な出来事や数字はありますか？'];
@@ -3842,8 +4337,10 @@ function buildOutlines(b,limit,school,acts,q){
    初期化
    ========================================================================= */
 try{ checkVersion(); }catch(e){}
+try{ applyPrefs(); }catch(e){}
 render();
 initCloud();
+try{ maybeOnboard(); }catch(e){}
 window.addEventListener('keydown',e=>{ if(e.key==='Escape'&&$('#overlay').classList.contains('open'))closeSheet(); });
 </script>
 </body>
