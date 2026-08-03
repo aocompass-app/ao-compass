@@ -1,7 +1,7 @@
-# AO Compass 自動改善
-# 毎時、アプリを少しずつ良くする案を出して、安全なものだけ実装し、
-# テストを通してから「プルリクエスト（変更の提案）」を作ります。
-# main には直接入りません。Merge を押して初めて公開されます。
+# AO Compass 自動改善（自動反映つき）
+# 毎時、アプリを少しずつ良くする案を出して、安全なものだけ実装します。
+# テストに通ったときだけ main に入り、そのまま公開されます。
+# テストが1つでも落ちたら、その回の変更はまるごと捨てられます。
 name: AO Compass 自動改善
 
 on:
@@ -39,6 +39,13 @@ jobs:
           echo "hour=$(date -u +%H)" >> "$GITHUB_OUTPUT"
           echo "モード=$MODE 実行=$RUN"
 
+      # 変更前の状態を控えておく（あとで比べるため）
+      - name: 変更前を控える
+        if: steps.gate.outputs.run == 'yes'
+        run: |
+          cp index.html /tmp/before.html
+          wc -c < index.html > /tmp/before.size
+
       - uses: actions/setup-node@v4
         if: steps.gate.outputs.run == 'yes'
         with:
@@ -54,7 +61,6 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         if: steps.gate.outputs.run == 'yes'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           AO_HOUR: ${{ steps.gate.outputs.hour }}
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -69,7 +75,7 @@ jobs:
 
             `index.html` 1ファイルだけで動く、日本の総合型選抜（AO入試）向けの受験生用アプリです。
             GitHub Pages で公開されていて、実際の高校生が今この瞬間に使っています。
-            壊さないことが最優先です。
+            あなたの変更はテストに通ればそのまま公開されます。壊さないことが最優先です。
 
             # 絶対に守ること
 
@@ -84,6 +90,7 @@ jobs:
               バックアップの書き出しにもキーを含めない。
             - 既存データを壊さない。データ構造を変えるときは `migrate(raw)` に移行処理を足し、
               古いデータでも全画面が開くことを確認する。
+            - `.github/` の中のファイルは絶対に変更しない。
 
             # コードの地図
 
@@ -122,21 +129,22 @@ jobs:
 
             ## 3. 実装する
             `index.html` を Edit でピンポイントに直す。全文の書き直しはしない。
-            `const APP_VER` を当日の日付（YYYY.MM.DD）に上げる。同じ日に2回目なら末尾に -2。
+            `const APP_VER` を当日の日付（YYYY.MM.DD）に上げる。同じ日に2回目以降なら末尾に -2, -3 と足す。
+            **APP_VER を必ず変えること。**変わっていないと、この回の変更はすべて捨てられます。
 
             ## 4. 検証する（省略不可）
             `tests/smoke.mjs` がまだ無ければ、最初に作ってください。playwright を使い、
             `file://` で `index.html` を 390x844 で開いて、少なくとも次を確かめる内容にします。
             初回の案内は `window.__AO_NO_ONBOARD=1;` を addInitScript で入れて出さないようにします。
+            テストは1件でも落ちたら `process.exit(1)` で終わるようにします。
 
             - ホーム/志望校/提出書類/面接/タスク/自己分析/設定 の7画面が中身つきで開き、JSエラーが出ない
             - 必要書類に3件書いた志望校を入れたら `requiredDocs` が3件返り、緊急タスクも3件できる
             - タスクのチェックを同じ座標で4回押しても、押した行以外の done が変わらず、行の高さも変わらない
             - `migrate()` に古い形のデータを通しても全画面が開く
-            - 「募集要項」の免責の帯が残っていて、`APP_VER` が `YYYY.MM.DD` の形
+            - 「募集要項」の免責の帯が残っていて、`APP_VER` が入っている
 
             そのうえで毎回:
-            - 構文確認をする
             - `node tests/smoke.mjs` を通す
             - 今回変えた挙動そのものを確かめるテストを `tests/` に1本足して通す
             赤いまま終わらせない。直せない変更は取り消して、残りだけ残す。
@@ -144,28 +152,68 @@ jobs:
             ## 5. 記録する
             `.claude/improve-log.md` の末尾に、日付・担当分野・入れた改善・見送った案を追記する。
             ファイルが無ければ作る。
+            さらに `.claude/last-report.md` を新しく書き直し、専門用語なしの日本語で、
+            今回入れた改善（各2〜3行、受験生にとって何が変わるか）と、見送った案と理由を書く。
 
-            ## 6. 提案として出す（重要）
-            `git push` で main に直接入れてはいけません。実際の高校生が使っています。
-            かならず次の形で出してください。
-
-            ```
-            git config user.name "AO Compass Bot"
-            git config user.email "bot@users.noreply.github.com"
-            git switch -c improve/$(date -u +%Y%m%d-%H%M)
-            git add -A
-            git commit -m "自動改善: <入れた内容を1行で>"
-            git push -u origin HEAD
-            gh pr create --title "自動改善 <日付> <担当分野>" --body "<下記の本文>"
-            ```
-
-            プルリクエストの本文は、専門用語を使わない日本語で次の3つを書きます。
-            - 今回入れた改善（各2〜3行。受験生にとって何が変わるか）
-            - 見送った案と理由（各1行）
-            - テスト結果（何件通ったか）
+            ## 6. commit も push もしない
+            `git commit` も `git push` も `gh pr create` も**しないでください**。
+            変更はそのまま置いておくだけで大丈夫です。
+            このあとの工程が、テストをもう一度走らせて、通ったときだけ自動で公開します。
 
             ## 案が尽きてきたとき
-            5案すべてが「入れるほどではない」と判断した場合は、`index.html` は変えずに
-            `.claude/improve-state.json` を `{"mode":"daily"}` の内容にして、
-            その変更だけのプルリクエストを作り、本文に理由を書いてください。
+            5案すべてが「入れるほどではない」と判断した場合は、`index.html` を一切変えずに終わってください。
+            そのうえで `.claude/improve-state.json` を `{"mode":"daily"}` の内容に書き換えてください。
             毎時から1日1回に落ちます。頻度を上げ直すことはしないでください。
+
+      # ここから先は人が書いた確認です。1つでも引っかかったら公開しません。
+      - name: 安全確認
+        if: steps.gate.outputs.run == 'yes'
+        id: check
+        run: |
+          set -e
+          # .github は絶対に変えさせない
+          git checkout -- .github 2>/dev/null || true
+          git clean -fd .github 2>/dev/null || true
+
+          if cmp -s /tmp/before.html index.html; then
+            echo "index.html に変更なし。公開はしません。"
+            echo "changed=no" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # 免責の帯が残っているか
+          grep -q '募集要項' index.html || { echo "NG: 免責の帯が消えている"; exit 1; }
+
+          # バージョンが上がっているか
+          NEW=$(grep -o "APP_VER='[^']*'" index.html | head -1)
+          OLD=$(grep -o "APP_VER='[^']*'" /tmp/before.html | head -1)
+          echo "旧 $OLD → 新 $NEW"
+          [ -n "$NEW" ] || { echo "NG: APP_VER が見つからない"; exit 1; }
+          [ "$NEW" != "$OLD" ] || { echo "NG: APP_VER が上がっていない"; exit 1; }
+
+          # 極端に増減していないか（壊れた書き換えの検出）
+          BEFORE=$(cat /tmp/before.size); AFTER=$(wc -c < index.html)
+          echo "サイズ $BEFORE → $AFTER"
+          awk -v a="$BEFORE" -v b="$AFTER" 'BEGIN{ if (b < a*0.85 || b > a*1.30) exit 1 }' \
+            || { echo "NG: ファイルサイズが極端に変わっている"; exit 1; }
+
+          # 開発側のキーが紛れ込んでいないか
+          if grep -qE 'sk-ant-|sk-proj-|service_role' index.html; then
+            echo "NG: APIキーらしき文字列が入っている"; exit 1
+          fi
+
+          # 最終確認としてテストをもう一度走らせる
+          node tests/smoke.mjs
+
+          echo "changed=yes" >> "$GITHUB_OUTPUT"
+
+      - name: 公開する
+        if: steps.gate.outputs.run == 'yes' && steps.check.outputs.changed == 'yes'
+        run: |
+          VER=$(grep -o "APP_VER='[^']*'" index.html | head -1 | sed "s/APP_VER='//;s/'//")
+          git config user.name "AO Compass Bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "自動改善 $VER"
+          git push origin HEAD:main
+          echo "公開しました: $VER"
