@@ -337,7 +337,7 @@ hr.sep{border:none;border-top:1px solid var(--line);margin:14px 0}
 /* =========================================================================
    AO Compass — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.11';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.03';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_BASE='aoCompass_v1';
 const LS_SCOPE_KEY='aoCompass_scope';
 /* ログイン中のデータは、アカウントごとの引き出しに入れます。
@@ -1177,9 +1177,17 @@ function emptyState(em,title,msg,btn){
   const e=el('div','empty'); e.innerHTML=`<div class="em">${em}</div><h4>${esc(title)}</h4><p class="small">${esc(msg)}</p>`; if(btn){const w=el('div');w.style.marginTop='12px';w.appendChild(btn);e.appendChild(w);} return e;
 }
 function priorityBadge(p){ if(!p) return ''; const cls=p==1?'orange':p==2?'teal':'grey'; return `<span class="badge ${cls} pill-priority">第${p}志望</span>`; }
+/* 出願チェックリストの項目（進捗の計算と、志望校シートの一覧で同じものを使います） */
+const CHECK_ITEMS=[['req','募集要項を最新版で確認'],['gpa','評定条件を満たしているか確認'],['doc_ao','志望理由書／自己推薦書を作成'],['doc_katsu','活動報告書を完成'],['eng','英語資格の証明書を準備'],['photo','証明写真を準備'],['web','Web出願を完了'],['fee','受験料を支払う'],['mail','必要書類を郵送／提出'],['mensetsu','面接・プレゼン資料を提出']];
 function schoolProgress(s){
-  const cl=s.checklist||{}; const keys=['req','gpa','doc_ao','doc_katsu','eng','photo','web','fee','mail','mensetsu'];
-  const done=keys.filter(k=>cl[k]).length; return Math.round(done/keys.length*100);
+  const cl=s.checklist||{};
+  const done=CHECK_ITEMS.filter(it=>cl[it[0]]).length; return Math.round(done/CHECK_ITEMS.length*100);
+}
+/* チェックリストでまだ済んでいない最初の項目＝いま取りかかる一手（％だけでは何をすればいいか分かりません） */
+function nextCheckItem(s){
+  if(!s) return null; const cl=s.checklist||{};
+  for(let i=0;i<CHECK_ITEMS.length;i++){ if(!cl[CHECK_ITEMS[i][0]]) return {key:CHECK_ITEMS[i][0],label:CHECK_ITEMS[i][1]}; }
+  return null;
 }
 function countdownBox(iso){
   const AD=alertDays();
@@ -1222,9 +1230,18 @@ function vHome(){
     const pr=schoolProgress(primary);
     prog.innerHTML=`<div class="small muted" style="display:flex;justify-content:space-between"><span>出願準備の進捗</span><b>${pr}%</b></div><div class="prog" style="margin-top:5px"><span style="width:${pr}%"></span></div>`;
     hero.appendChild(prog);
+    /* ％だけ見せても次に何をすればいいか分からないので、未チェックの先頭を「次の一手」として出します */
+    const nx=nextCheckItem(primary);
+    const step=el('div','ai-note'); step.style.marginTop='8px';
+    step.innerHTML=nx?('👉 次の一手：<b>'+esc(nx.label)+'</b><br><span class="xsmall muted">下の「詳細を見る」で出願チェックリストを開けます。</span>')
+                     :'✅ 出願チェックリストはすべて済みました。提出前に、要項の原本ともう一度つき合わせましょう。';
+    hero.appendChild(step);
     const open=el('button','btn sm ghost','詳細を見る'); open.style.marginTop='10px'; open.onclick=()=>{go('schools');setTimeout(()=>openSchool(primary.id),50);}; hero.appendChild(open);
   } else { hero.innerHTML='<p class="small muted">第一志望が未設定です。志望校タブで設定できます。</p>'; }
   w.appendChild(hero);
+
+  // 出願締切の早い順（第一志望より先に締切が来る学校を見落とさないため）
+  try{ const dl=homeDeadlineCard(primary); if(dl) w.appendChild(dl); }catch(e){}
 
   // 今日やること（逆算プラン）
   w.appendChild(homeTodayCard());
@@ -1276,6 +1293,53 @@ function vHome(){
   start.onclick=()=>{ const t=tasksOn(todayISO()).filter(x=>!x.done)[0]||upcoming[0]; if(t){ openDaySheet(t.due||todayISO()); } else if(drafts[0]){go('documents');setTimeout(()=>openDocEditor(drafts[0].id),50);} else go('self'); };
   w.appendChild(start);
   return w;
+}
+/* 出願締切を早い順に並べた一覧。
+   第一志望のカウントダウンだけを見ていると、第2・第3志望のほうが先に締切が来る
+   （公募推薦が1か月早い等）ケースを取りこぼします。出願は締切を1日過ぎたら手遅れなので、
+   ホームで全校ぶんの残り日数を必ず見えるようにします。締切が未入力の学校もここから入れられます。 */
+function homeDeadlineCard(primary){
+  const all=S.schools||[];
+  if(!all.length) return null;
+  const dated=all.filter(s=>s.deadline);
+  const undated=all.filter(s=>!s.deadline);
+  /* 1校だけで締切も入っているなら、上の第一志望カードで足ります */
+  if(all.length<2 && !undated.length) return null;
+  const up=dated.filter(s=>daysUntil(s.deadline)>=0).sort((a,b)=>String(a.deadline).localeCompare(String(b.deadline)));
+  const past=dated.filter(s=>daysUntil(s.deadline)<0).sort((a,b)=>String(b.deadline).localeCompare(String(a.deadline)));
+  const AD=alertDays();
+  const c=el('div','card');
+  const nearest=up[0]?daysUntil(up[0].deadline):null;
+  c.innerHTML='<div class="card-title"><span class="ic">📮</span><h3>出願締切が近い順</h3>'+
+    (nearest!=null?'<span class="badge '+(nearest<=AD?'alert':nearest<=AD*2?'warn':'navy')+'">最短 あと'+nearest+'日</span>':'')+'</div>';
+  /* 第一志望より先に締切が来る学校があれば、いちばん上で知らせます */
+  if(primary&&up.length&&up[0].id!==primary.id){
+    const pd=daysUntil(primary.deadline);
+    if(pd==null||nearest<pd){
+      const n=el('div','ai-note'); n.style.borderLeftColor='#b4573f'; n.style.marginBottom='8px';
+      n.innerHTML='⚠️ 第一志望（'+esc(shortName(primary.name))+'）より先に、<b>'+esc(shortName(up[0].name))+'</b>の締切（あと'+nearest+'日）が来ます。'+
+        '<br><span class="xsmall muted">先に提出するほうの書類から手をつけましょう。</span>';
+      c.appendChild(n);
+    }
+  }
+  const add=s=>{
+    const dd=daysUntil(s.deadline);
+    const r=el('div','list-row');
+    const badge=dd==null?'<span class="badge grey">締切未設定</span>'
+      :dd<0?'<span class="badge grey">締切済</span>'
+      :'<span class="badge '+(dd<=AD?'alert':dd<=AD*2?'warn':'navy')+'">あと'+dd+'日</span>';
+    const isP=!!(S.meta&&S.meta.primarySchoolId===s.id);
+    r.innerHTML='<div style="flex:1"><b class="small">'+esc(s.name)+'</b>'+(isP?' <span class="badge orange">第一志望</span>':'')+
+      '<div class="xsmall muted">'+(s.deadline?esc(fmtDate(s.deadline)):'締切日が未入力です')+
+      (s.faculty?' ・'+esc(shortName(s.faculty)):'')+'</div></div>'+badge;
+    const b=el('button','btn sm'+(dd==null?' teal':' ghost'),dd==null?'締切を入れる':'開く');
+    b.onclick=dd==null?(()=>editSchool(s.id)):(()=>{go('schools');setTimeout(()=>openSchool(s.id),50);});
+    r.appendChild(b); c.appendChild(r);
+  };
+  up.forEach(add); undated.forEach(add); past.forEach(add);
+  c.appendChild(el('p','xsmall muted',(undated.length?'締切日を入れると、逆算プランと残り日数に反映されます。':'')+
+    '締切日・時刻（消印有効／必着）は必ず募集要項の原本で確認してください。'));
+  return c;
 }
 function homeTodayCard(){
   const today=todayISO();
@@ -1376,7 +1440,7 @@ function openSchool(id){
     // checklist
     b.appendChild(el('hr','sep'));
     b.appendChild(el('h4',null,'出願チェックリスト')); b.appendChild(el('p','xsmall muted','要項から自動作成した想定タスクです。実際の必要書類は要項で確認してください。'));
-    const items=[['req','募集要項を最新版で確認'],['gpa','評定条件を満たしているか確認'],['doc_ao','志望理由書／自己推薦書を作成'],['doc_katsu','活動報告書を完成'],['eng','英語資格の証明書を準備'],['photo','証明写真を準備'],['web','Web出願を完了'],['fee','受験料を支払う'],['mail','必要書類を郵送／提出'],['mensetsu','面接・プレゼン資料を提出']];
+    const items=CHECK_ITEMS;
     s.checklist=s.checklist||{};
     const cl=el('div'); cl.style.marginTop='6px';
     items.forEach(([k,label])=>{ const r=el('div','list-row'); const ck=el('div','check'+(s.checklist[k]?' on':'')); ck.setAttribute('role','checkbox'); ck.setAttribute('tabindex','0'); ck.setAttribute('aria-checked',!!s.checklist[k]); ck.innerHTML=s.checklist[k]?'✓':''; const toggle=()=>{ s.checklist[k]=!s.checklist[k]; ck.classList.toggle('on'); ck.innerHTML=s.checklist[k]?'✓':''; ck.setAttribute('aria-checked',!!s.checklist[k]); save(); }; const hit=el('div','checkhit'); hit.appendChild(ck); hit.onclick=e=>{e.preventDefault();e.stopPropagation();if(!tapOK(r))return;toggle();}; ck.onkeydown=e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();toggle();}}; r.appendChild(hit); r.appendChild(el('div','small',esc(label))); cl.appendChild(r); });
@@ -2596,7 +2660,7 @@ function openDocEditor(id,tab){
       const row=el('div','btn-row'); row.style.marginTop='10px';
       const imp=el('button','btn sm teal','📎 ファイルを読み込む（PDF/Word/パワポ）'); imp.onclick=()=>pickFile('.pdf,.docx,.pptx,.txt,.md,.csv',(text,meta)=>{ ta.value = ta.value.trim() ? (ta.value.trim()+'\n\n'+text) : text; updateCnt(); d.body=ta.value; d.sourceFile=meta.name||d.sourceFile; touchDoc(d); toast('「'+(meta.name||'ファイル')+'」を読み込みました','ok'); });
       const saveV=el('button','btn sm','この内容をバージョン保存'); saveV.onclick=()=>{ d.body=ta.value; d.versions=d.versions||[]; d.versions.unshift({ts:Date.now(),body:ta.value}); touchDoc(d); toast('バージョンを保存しました','ok'); };
-      const dup=el('button','btn sm ghost','この下書きを複製'); dup.onclick=()=>{ const c={...d,id:uid(),title:d.title+'（複製）',versions:[],feedbacks:(d.feedbacks||[]).map(x=>({...x})),updatedAt:Date.now(),body:ta.value}; S.documents.push(c); save(); toast('複製しました','ok'); closeSheet(); go('documents'); };
+      const dup=el('button','btn sm ghost','この下書きを複製'); dup.onclick=()=>{ const c=Object.assign({},d,{id:uid(),title:d.title+'（複製）',versions:[],feedbacks:(d.feedbacks||[]).map(x=>Object.assign({},x)),updatedAt:Date.now(),body:ta.value}); S.documents.push(c); save(); toast('複製しました','ok'); closeSheet(); go('documents'); };
       row.append(imp,saveV,dup); pane.appendChild(row);
       const nb=fieldText('メモ（段落メモ・自分用）',d.notes,null,{area:true,rows:2}); nb.querySelector('textarea').onchange=e=>{d.notes=e.target.value;touchDoc(d);}; pane.appendChild(nb);
     }

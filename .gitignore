@@ -1,0 +1,4 @@
+# テスト用の道具（playwright）は毎回その場で入れるので、リポジトリには入れません
+node_modules/
+package.json
+package-lock.json
