@@ -485,6 +485,11 @@ a{color:var(--teal)}
 .tab.active{color:var(--teal)}
 .tab.active .ic{background:var(--teal-soft);color:var(--teal);transform:none}
 .tab:active .ic{transform:scale(.9)}
+.doclist-row{display:flex;gap:8px;margin-bottom:8px;align-items:center}
+.doclist-row .input{flex:1}
+.doclist-x{flex:none;min-height:0;padding:9px 12px;color:var(--ink-3);border-radius:11px}
+.doc-ul{margin:2px 0 0;padding-left:1.15em}
+.doc-ul li{margin:2px 0}
 </style>
 </head>
 <body>
@@ -526,7 +531,7 @@ a{color:var(--teal)}
 /* =========================================================================
    STORIA — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.11-6';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.11-7';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_BASE='aoCompass_v1';
 const LS_SCOPE_KEY='aoCompass_scope';
 /* ログイン中のデータは、アカウントごとの引き出しに入れます。
@@ -577,7 +582,7 @@ function migrate(raw){
   out.profile=Object.assign({},D.profile,raw.profile||{});
   out.prefs=Object.assign({},D.prefs,raw.prefs||{});
   ['schools','activities','documents','interview','essays','tasks','feedback','certs'].forEach(k=>{ if(!Array.isArray(out[k])) out[k]=[]; });
-  out.schools.forEach(x=>{ if(!x.checklist||typeof x.checklist!=='object') x.checklist={}; });
+  out.schools.forEach(x=>{ if(!x.checklist||typeof x.checklist!=='object') x.checklist={}; if(x.docList!=null&&!Array.isArray(x.docList)) x.docList=[]; });
   out.documents.forEach(d=>{ if(!Array.isArray(d.feedbacks))d.feedbacks=[]; if(!Array.isArray(d.versions))d.versions=[]; if(!d.paragraphNotes||typeof d.paragraphNotes!=='object')d.paragraphNotes={}; if(!Array.isArray(d.scoreHistory))d.scoreHistory=[]; if(d.aiAnalysis&&typeof d.aiAnalysis!=='object')d.aiAnalysis=null; });
   return out;
 }
@@ -1594,7 +1599,10 @@ function openSchool(id){
     b.appendChild(el('div','note','⚠️ 以下は登録された情報です。出願前に大学公式サイトの最新要項・原本を必ず確認してください。'));
     const meta=el('dl','kv'); meta.style.margin='12px 0';
     const rows=[['学部・学科',`${s.faculty||'—'} ${s.dept||''}`],['入試方式',s.method],['募集人数',s.capacity],['出願資格',s.eligibility],['評定条件',s.gpa],['英語資格など',s.english],['エントリー開始',fmtDate(s.entryStart)],['出願締切',fmtDate(s.deadline)+(dd!=null&&dd>=0?`（あと${dd}日）`:'')],['試験日',fmtDate(s.examDate)],['合格発表',fmtDate(s.resultDate)],['必要書類',s.docs],['選考方法',s.selection],['求める人物像',s.ideal],['アドミッション・ポリシー',s.policy],['志望順位',s.priority?('第'+s.priority+'志望'):'—'],['公式サイト',s.url?`<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.url)}</a>`:'—'],['調査メモ',s.notes]];
-    rows.forEach(([k,v])=>{ if(v==null||v==='')return; const dt=el('dt',null,esc(k)); const ddd=el('dd'); ddd.innerHTML=(k==='公式サイト')?v:nl2br(v); meta.append(dt,ddd); });
+    rows.forEach(([k,v])=>{ if(v==null||v==='')return; const dt=el('dt',null,esc(k)); const ddd=el('dd');
+      if(k==='必要書類'){ const _l=(Array.isArray(s.docList)&&s.docList.length)?s.docList:splitDocs(s.docs).map(t=>t.trim()).filter(Boolean); ddd.innerHTML=_l.length?('<ul class="doc-ul">'+_l.map(d=>'<li>'+esc(d)+'</li>').join('')+'</ul>'):esc(String(v)); }
+      else ddd.innerHTML=(k==='公式サイト')?v:nl2br(v);
+      meta.append(dt,ddd); });
     b.appendChild(meta);
     // checklist
     b.appendChild(el('hr','sep'));
@@ -2640,7 +2648,7 @@ function editSchool(id){
     const r4=el('div','row2'); f.entryStart=fieldText('エントリー開始日',s.entryStart,null,{type:'date'}); f.deadline=fieldText('出願締切日',s.deadline,null,{type:'date'}); r4.append(f.entryStart,f.deadline); b.appendChild(r4);
     const r5=el('div','row2'); f.examDate=fieldText('試験日',s.examDate,null,{type:'date'}); f.resultDate=fieldText('合格発表日',s.resultDate,null,{type:'date'}); r5.append(f.examDate,f.resultDate); b.appendChild(r5);
     f.lastDeadline=fieldText('前年度の出願締切（参考）',s.lastDeadline,'今年度の要項がまだ出ていないとき、この日付から翌年を概算して長期プランを作ります',{type:'date'}); b.appendChild(f.lastDeadline);
-    f.docs=fieldText('必要書類',s.docs,null,{area:true,rows:2}); b.appendChild(f.docs);
+    f.docList=docListEditor(b,s);
     f.selection=fieldText('選考方法',s.selection,null,{area:true,rows:2}); b.appendChild(f.selection);
     f.ideal=fieldText('大学が求める人物像',s.ideal,null,{area:true,rows:2}); b.appendChild(f.ideal);
     f.policy=fieldText('アドミッション・ポリシー',s.policy,'公式資料からの引用を推奨',{area:true,rows:3}); b.appendChild(f.policy);
@@ -2650,7 +2658,7 @@ function editSchool(id){
     const savebtn=el('button','btn primary','保存'); savebtn.onclick=()=>{
       if(!f.name.get()){toast('大学名を入力してください','warn');return;}
       const obj=id?s:{id:uid(),checklist:{}};
-      Object.assign(obj,{name:f.name.get(),faculty:f.faculty.get(),dept:f.dept.get(),method:f.method.get(),capacity:f.capacity.get(),priority:f.priority.get()?+f.priority.get():null,eligibility:f.eligibility.get(),gpa:f.gpa.get(),english:f.english.get(),entryStart:f.entryStart.get(),deadline:f.deadline.get(),examDate:f.examDate.get(),resultDate:f.resultDate.get(),lastDeadline:f.lastDeadline.get(),docs:f.docs.get(),selection:f.selection.get(),ideal:f.ideal.get(),policy:f.policy.get(),url:f.url.get(),notes:f.notes.get()});
+      Object.assign(obj,{name:f.name.get(),faculty:f.faculty.get(),dept:f.dept.get(),method:f.method.get(),capacity:f.capacity.get(),priority:f.priority.get()?+f.priority.get():null,eligibility:f.eligibility.get(),gpa:f.gpa.get(),english:f.english.get(),entryStart:f.entryStart.get(),deadline:f.deadline.get(),examDate:f.examDate.get(),resultDate:f.resultDate.get(),lastDeadline:f.lastDeadline.get(),docList:f.docList.get(),docs:f.docList.get().join('、'),selection:f.selection.get(),ideal:f.ideal.get(),policy:f.policy.get(),url:f.url.get(),notes:f.notes.get()});
       if(!id){ S.schools.push(obj); if(!S.meta.primarySchoolId&&obj.priority===1)S.meta.primarySchoolId=obj.id; }
       close(); commit('保存しました');
     };
@@ -3006,6 +3014,35 @@ function openInterview(id){
 const GRADES=['高1','高2','高3','既卒・浪人','その他'];
 const FIELDS=['教育・教員','情報・IT','国際・語学','医療・看護・薬学','法・政治','経済・経営・商','理学・工学','農・生命・環境','社会・福祉','心理','芸術・デザイン','スポーツ・健康','建築・都市','メディア・情報デザイン','その他'];
 const SCHOOL_HINTS=['公立高校','私立高校','国立高校','高等専門学校','通信制・定時制','総合学科'];
+const DOC_COMMON=['志望理由書','自己推薦書','活動報告書','エントリーシート','小論文','課題レポート','ポートフォリオ','自己PR書','学習計画書','研究計画書','推薦状','調査書','英語資格スコア','証明写真'];
+function docListEditor(container,s){
+  const init=(Array.isArray(s&&s.docList)&&s.docList.length)?s.docList.slice()
+            :String((s&&s.docs)||'').split(/[、,，\n\r]+/).map(t=>t.trim()).filter(Boolean);
+  const field=el('div','field');
+  field.innerHTML='<label>必要書類（1件ずつ）<span class="hint">出願で必要な書類を1つずつ入れてください</span></label>';
+  const rows=el('div','doclist'); field.appendChild(rows);
+  const lid='dl'+uid(); const dl=el('datalist'); dl.id=lid;
+  DOC_COMMON.forEach(d=>{ const o=el('option'); o.value=d; dl.appendChild(o); }); field.appendChild(dl);
+  function getVals(){ const out=[]; Array.prototype.forEach.call(rows.querySelectorAll('input'),i=>{ const v=i.value.trim(); if(v&&out.indexOf(v)<0) out.push(v); }); return out; }
+  function addRow(val){ const row=el('div','doclist-row');
+    const inp=el('input','input'); inp.type='text'; inp.setAttribute('list',lid); inp.value=val||''; inp.placeholder='書類名（例：志望理由書）';
+    const rm=el('button','btn sm ghost doclist-x','✕'); rm.type='button'; rm.setAttribute('aria-label','この書類を削除');
+    rm.onclick=()=>{ rows.removeChild(row); if(!rows.children.length) addRow(''); };
+    row.append(inp,rm); rows.appendChild(row); return inp; }
+  (init.length?init:['']).forEach(v=>addRow(v));
+  const add=el('button','btn sm ghost','＋ 書類を追加'); add.type='button'; add.style.marginTop='2px';
+  add.onclick=()=>{ const inp=addRow(''); inp.focus(); }; field.appendChild(add);
+  const chipwrap=el('div'); chipwrap.style.cssText='display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center';
+  chipwrap.appendChild(el('span','xsmall muted','よく使う書類：'));
+  DOC_COMMON.slice(0,8).forEach(d=>{ const c=el('button','chip click',d); c.type='button';
+    c.onclick=()=>{ if(getVals().indexOf(d)>=0){ toast('すでに追加済みです','warn'); return; }
+      let filled=false; Array.prototype.forEach.call(rows.querySelectorAll('input'),i=>{ if(!filled&&!i.value.trim()){ i.value=d; filled=true; } });
+      if(!filled) addRow(d); };
+    chipwrap.appendChild(c); });
+  field.appendChild(chipwrap);
+  container.appendChild(field);
+  return {get:getVals};
+}
 const TEXT_SIZES=[['s','小'],['m','標準'],['l','大'],['xl','特大']];
 const ZOOMS={s:0.93,m:1,l:1.1,xl:1.22};
 function alertDays(){ const n=+((S.prefs&&S.prefs.alertDays)||14); return (n>=1&&n<=180)?n:14; }
@@ -3106,8 +3143,47 @@ function openWelcome(reonly){
       back.style.visibility=i===0?'hidden':'visible';
       next.textContent=i===steps.length-1?(reonly?'閉じる':'はじめる'):'次へ'; };
     back.onclick=()=>{ if(i>0){ i--; paint(); } };
-    next.onclick=()=>{ if(i<steps.length-1){ i++; paint(); } else { seal(); close(); if(!reonly) setTimeout(()=>{ try{ openOnboarding(); }catch(e){} },160); } };
+    next.onclick=()=>{ if(i<steps.length-1){ i++; paint(); } else { seal(); close(); if(!reonly) setTimeout(()=>{ try{ openWelcomeAccount(openOnboarding); }catch(e){} },160); } };
     paint();
+  });
+}
+function openWelcomeAccount(next){
+  next=next||function(){};
+  if(!cloudConfigured() || (typeof sbUser!=='undefined'&&sbUser)){ next(); return; }
+  openSheet('アカウントを作成',(b,close)=>{
+    let mode='signup';
+    b.appendChild(el('p','small muted','はじめに、メールアドレスとパスワードでアカウントを作りましょう。スマホでもPCでも同じ続きから使え、入力内容はあなたのアカウントにだけ安全に同期されます。'));
+    const email=fieldText('メールアドレス','',null,{type:'email',placeholder:'you@example.com'}); b.appendChild(email);
+    const pw=fieldPassword('パスワード（6文字以上）'); b.appendChild(pw);
+    const pw2=fieldPassword('パスワード（確認のためもう一度）'); b.appendChild(pw2);
+    const msg=el('div','save-st'); msg.style.minHeight='18px'; b.appendChild(msg);
+    const showMsg=(t,kind)=>{ msg.textContent=t||''; msg.style.color=kind==='ok'?'var(--ok)':kind==='mut'?'var(--ink-2)':'var(--alert)'; };
+    const proceed=()=>{ S.profile=Object.assign({},S.profile,{onboarded:true}); save(); close(); setTimeout(function(){ next(); },160); };
+    const go2=el('button','btn primary block','登録して次へ'); go2.style.marginTop='4px';
+    go2.onclick=async()=>{
+      const em=email.get(), p1=pw.get();
+      if(mode==='signup'){
+        if(!em||p1.length<6){ showMsg('メールと、6文字以上のパスワードを入力してください'); return; }
+        if(p1!==pw2.get()){ showMsg('確認用のパスワードが一致しません'); return; }
+        go2.disabled=true; showMsg('登録中…','mut');
+        try{ const r=await sb.auth.signUp({email:em,password:p1});
+          if(r.error){ showMsg(jpAuthErr(r.error)); go2.disabled=false; return; }
+          toast('アカウントを作成しました','ok'); proceed();
+        }catch(e){ showMsg('通信に失敗しました'); go2.disabled=false; }
+      } else {
+        if(!em||!p1){ showMsg('メールとパスワードを入力してください'); return; }
+        go2.disabled=true; showMsg('ログイン中…','mut');
+        try{ const r=await sb.auth.signInWithPassword({email:em,password:p1});
+          if(r.error){ showMsg(jpAuthErr(r.error)); go2.disabled=false; return; }
+          toast('ログインしました','ok'); proceed();
+        }catch(e){ showMsg('通信に失敗しました'); go2.disabled=false; }
+      }
+    };
+    b.appendChild(go2);
+    const toggle=el('button','btn ghost sm block','すでにアカウントをお持ちの方はこちら'); toggle.type='button'; toggle.style.marginTop='8px';
+    toggle.onclick=()=>{ mode=(mode==='signup')?'login':'signup'; pw2.style.display=(mode==='signup')?'':'none'; go2.textContent=(mode==='signup')?'登録して次へ':'ログインして次へ'; toggle.textContent=(mode==='signup')?'すでにアカウントをお持ちの方はこちら':'新しくアカウントを作る'; showMsg(''); };
+    b.appendChild(toggle);
+    const skip=el('button','btn ghost sm block','あとで（スキップして続ける）'); skip.type='button'; skip.style.marginTop='2px'; skip.onclick=proceed; b.appendChild(skip);
   });
 }
 function maybeOnboard(){
@@ -3843,16 +3919,18 @@ function splitDocs(txt){
 function requiredDocs(s){
   if(!s) return [];
   const out=[]; const seen={};
-  const push=function(v){
+  const push=function(v,explicit){
     if(!v) return;
-    if(v.length<2||v.length>24) return;
+    if(v.length<2||v.length>28) return;
     const c=canonDoc(v);
     /* 「自己推薦書」のように、よく知られた書類名なら除外語に当たっても必ず残す */
     if(!knownDoc(v) && DOC_SKIP.test(v)) return;
-    if(!/[書票文案資料シート論文計画報告記述作文エッセイレポートプレゼンスライドカード]/.test(c)) return;  /* 「面接」「A4」などは書類ではない */
+    /* 1件ずつ登録された書類は、書式にかかわらず必ず拾う（自由記述からの推定だけ厳しくする） */
+    if(!explicit && !/[書票文案資料シート論文計画報告記述作文エッセイレポートプレゼンスライドカード]/.test(c)) return;
     if(seen[c]) return; seen[c]=1; out.push(c);
   };
-  splitDocs(s.docs).forEach(function(x){ push(normDocName(x)); });          /* 必要書類の欄はひとつ残らず */
+  var __explicit=Array.isArray(s.docList)&&s.docList.length>0;
+  (__explicit?s.docList:splitDocs(s.docs)).forEach(function(x){ push(normDocName(x),__explicit); });          /* 必要書類の欄はひとつ残らず */
   const txt=[s.docs,s.selection,s.method,s.notes,s.eligibility].filter(Boolean).join(' ');
   REQ_DOC_PATTERNS.forEach(function(pair){ if(pair[1].test(txt)) push(pair[0]); });   /* 文章の中に混ざっていても拾う */
   if(!seen['志望理由書']){ out.push('志望理由書'); seen['志望理由書']=1; }   /* 総合型選抜の中心。要項未入力でも必ず見る */
