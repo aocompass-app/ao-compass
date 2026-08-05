@@ -183,6 +183,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           claude_args: |
             --max-turns 60
+            --model claude-opus-5
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash"
           prompt: |
             あなたはこのリポジトリの開発者です。質問はせず、最後まで自分で進めてください。
