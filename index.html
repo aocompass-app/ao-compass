@@ -531,7 +531,7 @@ a{color:var(--teal)}
 /* =========================================================================
    STORIA — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.11-7';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.11-9';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_BASE='aoCompass_v1';
 const LS_SCOPE_KEY='aoCompass_scope';
 /* ログイン中のデータは、アカウントごとの引き出しに入れます。
@@ -3893,13 +3893,14 @@ const REQ_DOC_PATTERNS=[
 /* 本人が書くものではない（先生・役所・機関が用意する）ものは除く */
 const DOC_SKIP=/調査書|推薦(書|状|文)|評価書|成績証明|卒業(見込)?証明|在学証明|修了証明|証明写真|顔写真|写真|住民票|戸籍|健康診断|同意書|承諾書|誓約書|保護者|振込|検定料|受験料|入学金|受験票|受検票|志願票|願書|出願票|封筒|切手|返信用|宛名|ラベル|英語資格|外部試験|外部検定|資格・?検定|検定試験|スコア|成績表|TOEFL|TOEIC|IELTS|英検|GTEC|TEAP|ケンブリッジ|証明書|コピー|写し|返送|受験料|手数料|通知書|合格通知/i;
 /* 「①志望理由書（800字以内）2部」→「志望理由書」 */
-function normDocName(x){
+function normDocName(x,keepName){
   var v=String(x||'')
     .replace(/[（(【\[][^）)】\]]*[）)】\]]/g,'')
     .replace(/^[\s\u30000-9０-９①-⑳ⅰ-ⅹA-Za-zＡ-Ｚ.．,、・:：\-ー–—>＞●○◎■□☆★*＊\)）\]］]+/,'')
     .replace(/[\s\u3000]+/g,'')
-    .replace(/(各)?[0-9０-９]+[部通枚](提出|必要|必須)?$/,'')
-    .replace(/(の提出|を提出|提出|が必要|必要|必須|など|等|以上)$/,'');
+    .replace(/(各)?[0-9０-９]+[部通枚](提出|必要|必須)?$/,'');
+  /* keepName=1（必要書類の欄に書いたもの）は名前を尊重し、末尾の「など/等/以上」だけ整える */
+  v = keepName ? v.replace(/(など|等|以上)$/,'') : v.replace(/(の提出|を提出|提出|が必要|必要|必須|など|等|以上)$/,'');
   return v.trim();
 }
 /* 表記ゆれを代表的な名前にそろえる（同じ書類が二重に出ないように） */
@@ -3925,12 +3926,17 @@ function requiredDocs(s){
     const c=canonDoc(v);
     /* 「自己推薦書」のように、よく知られた書類名なら除外語に当たっても必ず残す */
     if(!knownDoc(v) && DOC_SKIP.test(v)) return;
-    /* 1件ずつ登録された書類は、書式にかかわらず必ず拾う（自由記述からの推定だけ厳しくする） */
-    if(!explicit && !/[書票文案資料シート論文計画報告記述作文エッセイレポートプレゼンスライドカード]/.test(c)) return;
+    if(explicit){
+      /* 必要書類の欄に書いたものは書式にかかわらず拾う。ただし明らかな注記文は除く */
+      if(/(その他|そのほか|以下のいずれ|大学が指定|各自|下記|上記|については|に関して|参照|詳細は|ください|下さい|注意|など$)/.test(v)) return;
+    } else {
+      /* 選考方法などの文章からの推定は、書類らしい語を含むものだけ */
+      if(!/[書票文案資料シート論文計画報告記述作文エッセイレポートプレゼンスライドカード]/.test(c)) return;
+    }
     if(seen[c]) return; seen[c]=1; out.push(c);
   };
-  var __explicit=Array.isArray(s.docList)&&s.docList.length>0;
-  (__explicit?s.docList:splitDocs(s.docs)).forEach(function(x){ push(normDocName(x),__explicit); });          /* 必要書類の欄はひとつ残らず */
+  var __src=(Array.isArray(s.docList)&&s.docList.length)?s.docList:splitDocs(s.docs);
+  __src.forEach(function(x){ push(normDocName(x,true),true); });          /* 必要書類の欄はひとつ残らず拾う */
   const txt=[s.docs,s.selection,s.method,s.notes,s.eligibility].filter(Boolean).join(' ');
   REQ_DOC_PATTERNS.forEach(function(pair){ if(pair[1].test(txt)) push(pair[0]); });   /* 文章の中に混ざっていても拾う */
   if(!seen['志望理由書']){ out.push('志望理由書'); seen['志望理由書']=1; }   /* 総合型選抜の中心。要項未入力でも必ず見る */
