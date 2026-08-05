@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1f3b57">
 <meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
-<title>AO Compass｜総合型選抜の伴走アプリ</title>
+<title>STORIA｜自分の魅力を、伝わる物語に</title>
 <style>
 :root{
   --bg:#f6f7f9; --surface:#ffffff; --surface-2:#eef1f4; --line:#e2e6eb;
@@ -324,6 +324,151 @@ hr.sep{border:none;border-top:1px solid var(--line);margin:14px 0}
 .av-e.on{border-color:var(--navy);box-shadow:0 0 0 2px var(--teal-soft)}
 /* ---------- 仕上げ ---------- */
 .topbar{box-shadow:0 1px 0 rgba(31,41,51,.04),0 8px 20px rgba(31,41,51,.05)}
+
+/* ============================================================
+   STORIA リデザイン層 — Apple / Linear 風（余白・タイポ・質感）
+   既存クラス名はそのまま、見た目のみ上書き。JSは変更なし。
+   ============================================================ */
+:root{
+  --bg:#F8F9FB; --surface:#FFFFFF; --surface-2:#F1F3F6; --line:#ECEEF2;
+  --ink:#111114; --ink-2:#6B7280; --ink-3:#9AA1AC;
+  --navy:#111318; --navy-2:#2A2D34;
+  --teal:#4F7CFF; --teal-soft:#EEF3FF;
+  --orange:#F59E42; --orange-soft:#FDF1E4;
+  --ok:#22C55E; --ok-soft:#E9F9EF; --warn:#D97706; --warn-soft:#FBF0E2; --alert:#EF4444;
+  --band:#111318; --band-ink:#E9EBF0;
+  --shadow:0 1px 2px rgba(17,18,24,.04),0 10px 30px rgba(17,18,24,.06);
+  --shadow-lg:0 16px 44px rgba(17,18,24,.12);
+  --radius:22px; --radius-s:14px;
+  --font:-apple-system,BlinkMacSystemFont,'SF Pro Text','Hiragino Kaku Gothic ProN','Hiragino Sans','Noto Sans JP',Meiryo,system-ui,sans-serif;
+  --ease:cubic-bezier(.22,.61,.36,1);
+}
+body{background:var(--bg);color:var(--ink);letter-spacing:.01em;line-height:1.72}
+h1,h2,h3,h4{letter-spacing:-.012em}
+a{color:var(--teal)}
+::selection{background:var(--teal-soft)}
+
+.view{padding:22px 18px 14px;animation:vin .4s var(--ease)}
+@keyframes vin{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.page-head{margin:6px 0 20px}
+.page-head h2{font-size:28px;font-weight:700}
+.page-head p{font-size:13.5px;margin-top:6px;color:var(--ink-2)}
+
+.topbar{background:rgba(248,249,251,.72);backdrop-filter:saturate(1.6) blur(18px);-webkit-backdrop-filter:saturate(1.6) blur(18px);border-bottom:1px solid var(--line)}
+.topbar-inner{padding:14px 18px}
+.brand{color:var(--ink);gap:11px}
+.brand .logo{width:32px;height:32px;border-radius:10px;background:linear-gradient(140deg,#4F7CFF,#8A5CF6 58%,#12B6A8);box-shadow:0 4px 14px rgba(79,124,255,.34);position:relative}
+.brand .logo::after{content:"✦";position:absolute;inset:0;border:0;transform:none;display:grid;place-items:center;color:#fff;font-size:15px;border-radius:10px}
+.brand-txt{display:flex;flex-direction:column;line-height:1.1}
+.brand .wm{font-weight:800;font-size:18px;letter-spacing:.16em;background:linear-gradient(120deg,#111318,#4F7CFF 150%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent}
+.brand small{font-size:9.5px;color:var(--ink-3);letter-spacing:.02em;margin-top:2px}
+
+.disclaimer{background:var(--band);color:var(--band-ink)}
+.disclaimer b{color:#fff}
+
+.card{background:rgba(255,255,255,.78);backdrop-filter:blur(14px) saturate(1.15);-webkit-backdrop-filter:blur(14px) saturate(1.15);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:20px;margin-bottom:16px;transition:transform .3s var(--ease),box-shadow .3s var(--ease)}
+.card.tight{padding:16px}
+.card-title{gap:10px;margin-bottom:12px}
+.card-title .ic{width:34px;height:34px;border-radius:11px;background:var(--surface-2);font-size:17px}
+.card h3{font-size:15.5px;font-weight:650}
+@media(hover:hover){.card:hover{box-shadow:var(--shadow-lg);transform:translateY(-2px)}}
+
+.btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:14px;padding:12px 17px;font-size:14px;font-weight:600;min-height:44px;transition:transform .2s var(--ease),background .2s,border-color .2s,box-shadow .2s,filter .2s}
+.btn:hover{border-color:#dfe3ea;background:var(--surface)}
+.btn:active{transform:scale(.965)}
+.btn.primary{background:var(--navy);border-color:var(--navy);color:var(--surface);box-shadow:0 6px 18px rgba(17,19,24,.18)}
+.btn.primary:hover{background:var(--navy-2);filter:none}
+.btn.teal{background:var(--teal);border-color:var(--teal);color:#fff;box-shadow:0 6px 18px rgba(79,124,255,.28)}
+.btn.orange{background:var(--orange);border-color:var(--orange);color:#fff}
+.btn.ghost{background:transparent;border-color:transparent}
+.btn.ghost:hover{background:var(--surface-2)}
+.btn.block{width:100%;min-height:52px;border-radius:16px}
+.btn.sm{min-height:0;padding:8px 13px;font-size:12.5px;border-radius:11px}
+.btn.danger{color:var(--alert);border-color:#f3d6d6;background:transparent}
+.btn.danger:hover{background:#fdeeee}
+
+.input,textarea.input,select.input{border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:13px 14px;transition:border-color .2s,box-shadow .2s}
+.input:focus,textarea.input:focus,select.input:focus{border-color:var(--teal);box-shadow:0 0 0 4px var(--teal-soft);outline:none}
+.field>label{font-size:12.5px;color:var(--ink-2)}
+
+.chip{border-radius:999px;padding:6px 12px}
+.chip.sel{background:var(--teal-soft);color:var(--teal);border-color:transparent}
+.seg{background:var(--surface-2);border-radius:13px;padding:4px}
+.seg button.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 4px rgba(17,18,24,.1)}
+.badge{border-radius:999px}
+.badge.navy{background:#EEF0F4;color:var(--ink)}
+.badge.teal{background:var(--teal-soft);color:var(--teal)}
+.badge.ok{background:var(--ok-soft);color:#16884a}
+.badge.alert{background:#FDECEC;color:var(--alert)}
+
+.prog{height:8px;background:var(--surface-2)}
+.prog>span{background:var(--teal)}
+.countdown .num{font-size:40px;font-weight:800;letter-spacing:-.02em}
+
+.tabbar{background:rgba(248,249,251,.8);backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4);border-top:1px solid var(--line)}
+.tab{color:var(--ink-3);font-weight:600;padding:11px 4px 9px}
+.tab.active{color:var(--ink)}
+.tab .ic{transition:transform .25s var(--ease)}
+.tab.active .ic{transform:translateY(-2px)}
+
+.overlay{background:rgba(17,18,24,.42);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+.sheet{border-radius:26px 26px 0 0;padding:20px 18px calc(22px + env(safe-area-inset-bottom));box-shadow:0 -20px 50px rgba(0,0,0,.16);animation:sup .42s var(--ease)}
+@media(min-width:620px){.sheet{border-radius:26px}}
+@keyframes sup{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
+.sheet-head h3{font-size:19px;font-weight:700}
+.x{background:var(--surface-2);color:var(--ink-2)}
+
+.tg,.acc,.menu-tile,.mode-card{border-radius:16px}
+.menu-tile{box-shadow:var(--shadow);padding:16px}
+.acc>summary{background:var(--surface)}
+.toast{background:var(--ink);color:var(--surface);border-radius:14px;box-shadow:var(--shadow-lg)}
+
+@media (prefers-reduced-motion: reduce){*{animation-duration:.001ms !important;transition-duration:.001ms !important}}
+
+.skl{background:linear-gradient(100deg,var(--surface-2) 30%,#e9edf3 50%,var(--surface-2) 70%);background-size:200% 100%;animation:shim 1.3s infinite;border-radius:10px}
+@keyframes shim{to{background-position:-200% 0}}
+
+/* チュートリアル */
+.tut{text-align:center;padding:14px 6px 2px}
+.tut-ic{font-size:46px;line-height:1;margin:6px 0 14px}
+.tut-t{font-size:21px;font-weight:700;letter-spacing:-.01em;margin:0 0 10px}
+.tut-d{font-size:14.5px;color:var(--ink-2);line-height:1.85;margin:0 auto;max-width:22em}
+.tut-dots{display:flex;gap:7px;justify-content:center;margin-top:20px}
+.tut-dot{width:7px;height:7px;border-radius:50%;background:var(--surface-2);transition:.3s var(--ease)}
+.tut-dot.on{background:var(--teal);width:22px;border-radius:99px}
+
+/* ---------- ダークモード（システム連動） ---------- */
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0B0C0F; --surface:#161821; --surface-2:#20232C; --line:#2A2E38;
+    --ink:#F4F6FA; --ink-2:#A6ACB8; --ink-3:#6E7480;
+    --navy:#F4F6FA; --navy-2:#E3E6EC;
+    --teal:#6E92FF; --teal-soft:#1A2340;
+    --orange:#F0A657; --orange-soft:#2A2213;
+    --ok:#34D07A; --ok-soft:#14301F; --warn:#E0A44A; --warn-soft:#2A2213; --alert:#FF6B6B;
+    --band:#20232C; --band-ink:#C9CDD6;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 12px 34px rgba(0,0,0,.5);
+    --shadow-lg:0 18px 46px rgba(0,0,0,.6);
+  }
+  body{background:radial-gradient(1200px 700px at 50% -20%,#12141b,#0B0C0F 62%)}
+  .card{background:rgba(22,24,33,.72)}
+  .topbar{background:rgba(11,12,15,.72)} .tabbar{background:rgba(11,12,15,.82)}
+  .input,textarea.input,select.input,.check,.seg button.on,.mode-card,.menu-tile,.day-cell,.ac-list,.acc>summary,.tg,.gradesheet{background:var(--surface)}
+  .gradesheet{background:linear-gradient(180deg,#181b24,#12141b)}
+  .btn{background:var(--surface-2);border-color:var(--line);color:var(--ink)}
+  .btn.ghost{background:transparent}
+  .btn:hover{background:#2a2e3a}
+  .btn.primary{background:var(--navy);color:#111318}
+  .btn.teal{color:#0B1220}
+  .btn.danger{background:transparent;border-color:#4a2b2b}
+  .check{border-color:var(--line)}
+  .x,.seg{background:var(--surface-2)}
+  .badge.navy{background:#20232C;color:var(--ink)}
+  .note{background:#241f14;border-color:#3a3020;color:#e6c98f}
+  .qt,.ai-note{background:var(--surface-2)}
+  .skl{background:linear-gradient(100deg,#20232C 30%,#2a2e3a 50%,#20232C 70%)}
+  .brand .wm{background:linear-gradient(120deg,#F4F6FA,#6E92FF 150%);-webkit-background-clip:text;background-clip:text}
+}
 </style>
 </head>
 <body>
@@ -331,7 +476,7 @@ hr.sep{border:none;border-top:1px solid var(--line);margin:14px 0}
   <header class="topbar">
     <div class="topbar-inner">
       <div class="brand"><span class="logo" aria-hidden="true"></span>
-        <span>AO Compass<small>総合型選抜の伴走アプリ</small></span>
+        <span class="brand-txt"><span class="wm">STORIA</span><small>自分の魅力を、伝わる物語に。</small></span>
       </div>
       <div class="spacer"></div>
       <button class="avatar-btn" id="btnProfile" type="button" aria-label="プロフィールとアカウント" aria-haspopup="dialog"></button>
@@ -363,9 +508,9 @@ hr.sep{border:none;border-top:1px solid var(--line);margin:14px 0}
 <script>
 "use strict";
 /* =========================================================================
-   AO Compass — 単一HTML / localStorage / ルールベースAI (デモ)
+   STORIA — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.11-2';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.11-3';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_BASE='aoCompass_v1';
 const LS_SCOPE_KEY='aoCompass_scope';
 /* ログイン中のデータは、アカウントごとの引き出しに入れます。
@@ -500,7 +645,7 @@ async function cloudPush(){
   updateAuthBar();
 }
 function scheduleCloudPush(){ if(!sb||!sbUser) return; sbStatus='pending'; updateAuthBar(); clearTimeout(sbSyncTimer); sbSyncTimer=setTimeout(cloudPush,1500); }
-const AV_GRADS=[['#1f3b57','#128f8b'],['#e8873b','#b4573f'],['#2c5478','#5b8db8'],['#2e8b57','#128f8b'],['#7a4fa3','#128f8b'],['#c9772a','#e8873b']];
+const AV_GRADS=[['#4F7CFF','#8A5CF6'],['#F59E42','#EF4444'],['#111318','#4F7CFF'],['#22C55E','#12B6A8'],['#8A5CF6','#4F7CFF'],['#F5A742','#F5C542']];
 function gradOf(i){ i=(i|0); const g=AV_GRADS[((i%AV_GRADS.length)+AV_GRADS.length)%AV_GRADS.length]||AV_GRADS[0]; return 'linear-gradient(135deg,'+g[0]+','+g[1]+')'; }
 function avatarGrad(){ return gradOf((S.profile&&S.profile.avatarColor)|0); }
 function avatarInitial(){ const nm=((S.profile&&S.profile.name)||'').trim(); if(nm) return nm.slice(0,1); if(sbUser&&sbUser.email) return sbUser.email.slice(0,1).toUpperCase(); return '👤'; }
@@ -527,6 +672,7 @@ function openProfileMenu(){
     const list=el('div','pmenu-list');
     const mk=(icon,label,note,fn)=>{ const r=el('button','pmenu-row'); r.type='button'; r.innerHTML='<span class="pg">'+icon+'</span><span class="pl">'+esc(label)+'</span>'+(note?'<span class="pn">'+esc(note)+'</span>':'')+'<span class="pc">›</span>'; r.onclick=fn; return r; };
     list.appendChild(mk('👤','プロフィールを編集','',()=>{ close(); go('settings'); }));
+    list.appendChild(mk('📖','STORIAの使い方を見る','',()=>{ close(); openWelcome(true); }));
     if(cloudConfigured()){ list.appendChild(mk('☁️',sbUser?'クラウド同期':'ログイン / 新規登録',sbUser?(sbStatus==='error'?'エラー':'同期済'):'',()=>{ close(); openAuthSheet(); })); }
     b.appendChild(list);
     b.appendChild(el('p','xsmall muted','アイコンや名前は「プロフィールを編集」からいつでも変えられます。'));
@@ -1253,7 +1399,7 @@ function vHome(){
     const _n0=(S.profile&&S.profile.name||'').trim();
     w.appendChild(pageHead(_n0&&S.prefs&&S.prefs.greet!==false?_n0+'さん、ようこそ':'ようこそ','総合型選抜の準備を、ここで一気通貫に'));
     const c=el('div','card');
-    c.innerHTML='<div class="card-title"><span class="ic">🧭</span><h3>AO Compass へようこそ</h3></div><p class="small muted">「自己分析 → 志望校研究 → 出願戦略 → 書類作成 → 面接・小論文 → 出願」を一か所で管理できます。まずはデモを見るか、志望校の登録から始めましょう。</p>';
+    c.innerHTML='<div class="card-title"><span class="ic">🧭</span><h3>STORIA へようこそ</h3></div><p class="small muted">「自己分析 → 志望校研究 → 出願戦略 → 書類作成 → 面接・小論文 → 出願」を一か所で管理できます。まずはデモを見るか、志望校の登録から始めましょう。</p>';
     const row=el('div','btn-row'); row.style.marginTop='10px';
     const b1=el('button','btn primary','デモデータを読み込む'); b1.onclick=loadDemo;
     const b2=el('button','btn','志望校を登録する'); b2.onclick=()=>go('schools');
@@ -2907,12 +3053,41 @@ function openOnboarding(){
   });
 }
 /* すでに使っている人には出しません（データが空のときだけ最初に出ます） */
+function tutorialSteps(){ return [
+  {ic:'📖',t:'STORIA へようこそ',d:'あなたには、まだ言葉になっていない物語がある。STORIAは、あなたの活動・経験・想いを整理し、あなたにしか語れない物語へと変える相棒です。'},
+  {ic:'🔎',t:'① 過去を整理する',d:'部活・委員会・ボランティア・趣味などを書き出し、自分でも気づいていない強みを見つけます。「自己分析」や「ポートフォリオ」から始められます。'},
+  {ic:'🧭',t:'② 未来につなげる',d:'志望理由や将来の目標を明確にして、一貫したストーリーにします。「志望校」や「ストーリー設計」で整理しましょう。'},
+  {ic:'✍️',t:'③ 伝わる形にする',d:'志望理由書や面接で「この人を応援したい」と思ってもらえる表現に落とし込みます。「書類」「面接」で練習できます。'},
+  {ic:'🚀',t:'使い方はかんたん',d:'下のタブでホーム・志望校・書類・面接を移動。右上の丸いアイコンはあなたのプロフィールです。まずはデモを見るか、志望校の登録から始めましょう。'}
+]; }
+function openWelcome(reonly){
+  openSheet(reonly?'STORIAの使い方':'ようこそ',(b,close)=>{
+    const steps=tutorialSteps(); let i=0;
+    const stage=el('div','tut'); b.appendChild(stage);
+    const dots=el('div','tut-dots'); b.appendChild(dots);
+    const nav=el('div','btn-row'); nav.style.marginTop='14px'; b.appendChild(nav);
+    const back=el('button','btn ghost','戻る'); back.type='button';
+    const next=el('button','btn primary block','次へ'); next.type='button'; next.style.flex='1';
+    nav.append(back,next);
+    const skip=el('button','btn ghost sm block',reonly?'閉じる':'スキップ'); skip.type='button'; skip.style.marginTop='8px'; b.appendChild(skip);
+    const seal=()=>{ if(!reonly){ S.profile=Object.assign({},S.profile,{onboarded:true}); save(); } };
+    skip.onclick=()=>{ seal(); close(); };
+    const paint=()=>{ const st=steps[i];
+      stage.innerHTML='<div class="tut-ic">'+st.ic+'</div><h3 class="tut-t">'+esc(st.t)+'</h3><p class="tut-d">'+esc(st.d)+'</p>';
+      dots.innerHTML=''; steps.forEach((_,k)=>{ dots.appendChild(el('span','tut-dot'+(k===i?' on':''))); });
+      back.style.visibility=i===0?'hidden':'visible';
+      next.textContent=i===steps.length-1?(reonly?'閉じる':'はじめる'):'次へ'; };
+    back.onclick=()=>{ if(i>0){ i--; paint(); } };
+    next.onclick=()=>{ if(i<steps.length-1){ i++; paint(); } else { seal(); close(); if(!reonly) setTimeout(()=>{ try{ openOnboarding(); }catch(e){} },160); } };
+    paint();
+  });
+}
 function maybeOnboard(){
   if(typeof window!=='undefined'&&window.__AO_NO_ONBOARD) return;   /* 自動テスト用の逃げ道 */
   const P=S.profile||{};
   if(P.onboarded) return;
   if(!isEmptyState(S)){ S.profile=Object.assign({},P,{onboarded:true}); save(); return; }
-  setTimeout(()=>{ try{ if(!$('#overlay').classList.contains('open')) openOnboarding(); }catch(e){} },600);
+  setTimeout(()=>{ try{ if(!$('#overlay').classList.contains('open')) openWelcome(false); }catch(e){} },600);
 }
 
 function vSettings(){
@@ -2988,7 +3163,7 @@ function vSettings(){
   const rb=el('button','btn sm block','🔄 最新版を読み込み直す');
   rb.onclick=()=>{ try{ flushAutosave(); }catch(e){} const u=location.href.split('#')[0].split('?')[0]+'?v='+Date.now(); location.replace(u); };
   vc.appendChild(rb); w.appendChild(vc);
-  const about=el('div','card tight'); about.innerHTML='<p class="xsmall muted">AO Compass（試作版）｜総合型選抜の伴走アプリ。AIは合否を判断せず、あなたの経験や実績を捏造しません。最終的な提出内容は必ずご自身で確認し、先生・指導者にも確認してもらいましょう。デモの大学名・要項はすべて架空です。</p>'; w.appendChild(about);
+  const about=el('div','card tight'); about.innerHTML='<p class="xsmall muted">STORIA（試作版）｜総合型選抜の伴走アプリ。AIは合否を判断せず、あなたの経験や実績を捏造しません。最終的な提出内容は必ずご自身で確認し、先生・指導者にも確認してもらいましょう。デモの大学名・要項はすべて架空です。</p>'; w.appendChild(about);
   return w;
 }
 
@@ -3071,7 +3246,7 @@ function vMore(){
   const rb=el('button','btn sm block','🔄 最新版を読み込み直す');
   rb.onclick=()=>{ try{ flushAutosave(); }catch(e){} const u=location.href.split('#')[0].split('?')[0]+'?v='+Date.now(); location.replace(u); };
   vc.appendChild(rb); w.appendChild(vc);
-  const about=el('div','card tight'); about.innerHTML='<p class="xsmall muted">AO Compass（試作版）｜総合型選抜の伴走アプリ。AIは合否を判断せず、あなたの経験や実績を捏造しません。最終的な提出内容は必ずご自身で確認し、先生・指導者にも確認してもらいましょう。デモの大学名・要項はすべて架空です。</p>'; w.appendChild(about);
+  const about=el('div','card tight'); about.innerHTML='<p class="xsmall muted">STORIA（試作版）｜総合型選抜の伴走アプリ。AIは合否を判断せず、あなたの経験や実績を捏造しません。最終的な提出内容は必ずご自身で確認し、先生・指導者にも確認してもらいましょう。デモの大学名・要項はすべて架空です。</p>'; w.appendChild(about);
   return w;
 }
 function exportData(){ const blob=new Blob([JSON.stringify(S,null,2)],{type:'application/json'}); const a=el('a'); a.href=URL.createObjectURL(blob); a.download='ao-compass-backup.json'; a.click(); toast('バックアップを書き出しました','ok'); }
