@@ -490,6 +490,8 @@ a{color:var(--teal)}
 .doclist-x{flex:none;min-height:0;padding:9px 12px;color:var(--ink-3);border-radius:11px}
 .doc-ul{margin:2px 0 0;padding-left:1.15em}
 .doc-ul li{margin:2px 0}
+.pmenu-row.danger{color:var(--alert)}
+.pmenu-row.danger .pg{filter:grayscale(1)}
 </style>
 </head>
 <body>
@@ -531,7 +533,7 @@ a{color:var(--teal)}
 /* =========================================================================
    STORIA — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.11-9';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.11-11';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_BASE='aoCompass_v1';
 const LS_SCOPE_KEY='aoCompass_scope';
 /* ログイン中のデータは、アカウントごとの引き出しに入れます。
@@ -647,6 +649,17 @@ async function doLogout(alsoKey){
   try{ if(sb) await sb.auth.signOut(); }catch(e){}
   purgeAccountData(alsoKey);
 }
+/* アカウント削除：クラウド上のデータ行を消し、サインアウトし、この端末のデータも消します */
+async function deleteAccount(){
+  if(!sb||!sbUser){ purgeAccountData(true); return {ok:true}; }
+  const uidv=sbUser.id; let cloudErr=null;
+  try{ const r=await sb.from('app_state').delete().eq('user_id',uidv); if(r&&r.error) cloudErr=r.error; }catch(e){ cloudErr=e; }
+  try{ await sb.from('entitlements').delete().eq('user_id',uidv); }catch(e){}
+  try{ if(sb) await sb.auth.signOut(); }catch(e){}
+  try{ localStorage.removeItem(LS_BASE+'__u_'+uidv); }catch(e){}
+  purgeAccountData(true);
+  return {ok:!cloudErr, error:cloudErr};
+}
 async function cloudPull(){
   if(!sb||!sbUser) return;
   try{
@@ -694,7 +707,8 @@ function openProfileMenu(){
     const mk=(icon,label,note,fn)=>{ const r=el('button','pmenu-row'); r.type='button'; r.innerHTML='<span class="pg">'+icon+'</span><span class="pl">'+esc(label)+'</span>'+(note?'<span class="pn">'+esc(note)+'</span>':'')+'<span class="pc">›</span>'; r.onclick=fn; return r; };
     list.appendChild(mk('👤','プロフィールを編集','',()=>{ close(); go('settings'); }));
     list.appendChild(mk('📖','STORIAの使い方を見る','',()=>{ close(); openWelcome(true); }));
-    if(cloudConfigured()){ list.appendChild(mk('☁️',sbUser?'クラウド同期':'ログイン / 新規登録',sbUser?(sbStatus==='error'?'エラー':'同期済'):'',()=>{ close(); openAuthSheet(); })); }
+    if(cloudConfigured()){ list.appendChild(mk('☁️',sbUser?'クラウド同期・アカウント':'ログイン / 新規登録',sbUser?(sbStatus==='error'?'エラー':'同期済'):'',()=>{ close(); openAuthSheet(); })); }
+    if(sbUser){ const _lo=mk('↩︎','ログアウト','',()=>{ close(); confirmDelete('ログアウトします。この端末のデータは消えますが、クラウドには残っているので、次にログインすれば元どおりです。よろしいですか？',async()=>{ await doLogout(false); toast('ログアウトしました','ok'); }); }); _lo.classList.add('danger'); list.appendChild(_lo); }
     b.appendChild(list);
     b.appendChild(el('p','xsmall muted','アイコンや名前は「プロフィールを編集」からいつでも変えられます。'));
     const cbtn=el('button','btn ghost block','閉じる'); cbtn.type='button'; cbtn.style.marginTop='6px'; cbtn.onclick=close; b.appendChild(cbtn);
@@ -757,6 +771,14 @@ function openAuthSheet(){
         toast('ログアウトしました（この端末のデータは消しました）','ok'); try{ close(); }catch(e){} }); };
       b.appendChild(out);
       b.appendChild(el('div','note','🔒 ログアウトすると、この端末に保存されたこのアカウントのデータは削除されます。最後に自動で同期してから消すので、内容が失われることはありません。学校や図書館の共用パソコンでも安心して使えます。'));
+      const del=el('button','btn danger block','アカウントを削除'); del.style.marginTop='16px';
+      del.onclick=()=>{ confirmDelete('アカウントと、クラウド・この端末に保存されたすべての入力データを削除してログアウトします。この操作は元に戻せません。本当に削除しますか？',async()=>{
+        del.disabled=true; del.textContent='削除中…';
+        const r=await deleteAccount();
+        toast(r&&r.ok?'アカウントを削除しました':'この端末のデータは削除しました（クラウドの削除は反映に時間がかかる場合があります）','ok');
+        try{ close(); }catch(e){} }); };
+      b.appendChild(del);
+      b.appendChild(el('p','xsmall muted','「アカウントを削除」は、入力データ（志望校・書類・自己分析など）をクラウドとこの端末の両方から消去してログアウトします。ログイン用メールの登録自体の削除をご希望の場合は運営までご連絡ください。'));
       return;
     }
     b.appendChild(el('div','note info','メールアドレスとパスワードでアカウントを作ると、入力データがクラウドに保存され、<b>スマホでもPCでも同じログインで続きから</b>使えます。'));
@@ -868,8 +890,8 @@ function openBillingSheet(reason){
 }
 
 /* ---------------- Router ---------------- */
-let view='home';
-function go(v){ try{ flushAutosave(); }catch(e){} view=v; window.scrollTo({top:0}); render(); }
+let view='home', prevView='home';
+function go(v){ try{ flushAutosave(); }catch(e){} if(v!==view){ prevView=view; } view=v; window.scrollTo({top:0}); render(); }
 document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>go(b.dataset.tab));
 $('#btnProfile').onclick=()=>openProfileMenu();
 
@@ -1428,11 +1450,11 @@ function vHome(){
     const _n0=(S.profile&&S.profile.name||'').trim();
     w.appendChild(pageHead(_n0&&S.prefs&&S.prefs.greet!==false?_n0+'さん、ようこそ':'ようこそ','総合型選抜の準備を、ここで一気通貫に'));
     const c=el('div','card');
-    c.innerHTML='<div class="card-title"><span class="ic">🧭</span><h3>STORIA へようこそ</h3></div><p class="small muted">「自己分析 → 志望校研究 → 出願戦略 → 書類作成 → 面接・小論文 → 出願」を一か所で管理できます。まずはデモを見るか、志望校の登録から始めましょう。</p>';
+    c.innerHTML='<div class="card-title"><span class="ic">🧭</span><h3>STORIA へようこそ</h3></div><p class="small muted">「自己分析 → 志望校研究 → 出願戦略 → 書類作成 → 面接・小論文 → 出願」を一か所で管理できます。まずは「志望校」から登録を。入力の仕方は下の「使い方を見る」でも確認できます。</p>';
     const row=el('div','btn-row'); row.style.marginTop='10px';
-    const b1=el('button','btn primary','デモデータを読み込む'); b1.onclick=loadDemo;
-    const b2=el('button','btn','志望校を登録する'); b2.onclick=()=>go('schools');
-    row.append(b1,b2); c.appendChild(row); w.appendChild(c);
+    const b2=el('button','btn primary','志望校を登録する'); b2.onclick=()=>go('schools');
+    const b3=el('button','btn ghost','使い方を見る'); b3.onclick=()=>openWelcome(true);
+    row.append(b2,b3); c.appendChild(row); w.appendChild(c);
     w.appendChild(privacyNote()); return w;
   }
   const _nm=(S.profile&&S.profile.name||'').trim();
@@ -3123,7 +3145,8 @@ function tutorialSteps(){ return [
   {ic:'🔎',t:'① 過去を整理する',d:'部活・委員会・ボランティア・趣味などを書き出し、自分でも気づいていない強みを見つけます。「自己分析」や「ポートフォリオ」から始められます。'},
   {ic:'🧭',t:'② 未来につなげる',d:'志望理由や将来の目標を明確にして、一貫したストーリーにします。「志望校」や「ストーリー設計」で整理しましょう。'},
   {ic:'✍️',t:'③ 伝わる形にする',d:'志望理由書や面接で「この人を応援したい」と思ってもらえる表現に落とし込みます。「書類」「面接」で練習できます。'},
-  {ic:'🚀',t:'使い方はかんたん',d:'下のタブでホーム・志望校・書類・面接を移動。右上の丸いアイコンはあなたのプロフィールです。まずはデモを見るか、志望校の登録から始めましょう。'}
+  {ic:'📝',t:'こうやって入力します',d:'まず「志望校」タブで大学を登録し、必要書類を1件ずつ入れます（志望理由書・活動報告書…のように1つずつ）。次に「書類」タブで本文を書き、「面接」タブで練習。入力した内容は自動でタスクや取り組み状況に反映されます。'},
+  {ic:'🚀',t:'さあ、始めましょう',d:'下のタブでホーム・志望校・書類・面接を移動できます。右上の丸いアイコンはあなたのプロフィール。「志望校」の登録から始めてみましょう。'}
 ]; }
 function openWelcome(reonly){
   openSheet(reonly?'STORIAの使い方':'ようこそ',(b,close)=>{
@@ -3196,6 +3219,7 @@ function maybeOnboard(){
 
 function vSettings(){
   const w=el('div','view');
+  const _bk=el('button','btn ghost sm','‹ 戻る'); _bk.style.marginBottom='6px'; _bk.onclick=()=>go(prevView&&prevView!=='settings'?prevView:'home'); w.appendChild(_bk);
   w.appendChild(pageHead('設定','プロフィール・表示・AI・データ'));
 
   /* --- プロフィール --- */
@@ -3251,11 +3275,10 @@ function vSettings(){
   /* --- データ管理 --- */
   const dc=el('div','card'); dc.innerHTML='<div class="card-title"><span class="ic">💾</span><h3>データ管理</h3></div><p class="small muted">データはこのブラウザ内に保存されます（ログイン中はクラウドにも保存されます）。</p>';
   const row=el('div','btn-row'); row.style.marginTop='10px';
-  const demo=el('button','btn','デモデータを読み込む'); demo.onclick=()=>confirmDelete('現在のデータを消してデモデータを読み込みます。よろしいですか？',loadDemo);
   const exp=el('button','btn ghost','バックアップ書き出し'); exp.onclick=exportData;
   const imp=el('button','btn ghost','読み込み'); imp.onclick=importData;
   const del=el('button','btn danger','すべてのデータを削除'); del.onclick=()=>confirmDelete('すべてのデータ（志望校・書類・自己分析など）を完全に削除します。取り消せません。',()=>{S=blankState();S.profile.onboarded=true;save();toast('削除しました','ok');go('home');});
-  row.append(demo,exp,imp,del); dc.appendChild(row);
+  row.append(exp,imp,del); dc.appendChild(row);
   dc.appendChild(el('p','xsmall muted','※ バックアップにはAIのAPIキーは含まれません（安全のため）。'));
   w.appendChild(dc);
 
