@@ -2,6 +2,9 @@
 # 毎時、アプリを少しずつ良くする案を出して、安全なものだけ実装します。
 # テストに通ったときだけ main に入り、そのまま公開されます。
 # テストが1つでも落ちたら、その回の変更はまるごと捨てられます。
+# 作業中にご本人が index.html を直していた場合は、上書きせず、
+# ご本人の編集の上に今回の改善を重ねてから、もう一度テストして公開します。
+# 同じ場所を両方が直していて合わせられないときだけ、その回を見送ります。
 name: AO Compass 自動改善
 
 on:
@@ -22,7 +25,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      # 履歴を全部取っておく（あとで本人の編集と突き合わせるため）
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 鍵が入っているかを最初に確かめる（入っていないと途中で分かりにくいエラーになる）
+      - name: 鍵の確認
+        env:
+          KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "ANTHROPIC_API_KEY が設定されていません。Settings → Secrets and variables → Actions で登録してください。" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "鍵あり"
 
       # 案が尽きてきたら 1日1回だけ動かすモードに落とす
       - id: gate
@@ -45,6 +62,7 @@ jobs:
         run: |
           cp index.html /tmp/before.html
           wc -c < index.html > /tmp/before.size
+          git rev-parse HEAD > /tmp/before.sha
 
       - uses: actions/setup-node@v4
         if: steps.gate.outputs.run == 'yes'
@@ -171,8 +189,19 @@ jobs:
           fi
 
           npm init -y >/dev/null 2>&1 || true
-          npm i -D playwright >/dev/null
-          npx playwright install --with-deps chromium
+          # ネットワークが不安定な回があるので3回まで試す
+          for i in 1 2 3; do npm i -D playwright >/dev/null && break; echo "npm 再試行 $i"; sleep 20; done
+          for i in 1 2 3; do npx playwright install --with-deps chromium && break; echo "ブラウザ 再試行 $i"; sleep 20; done
+
+      # AIが触る前に、いまのアプリがテストを通ることを確かめる
+      # （もともと落ちているなら、それはAIのせいではないので先に知らせる）
+      - name: 変更前テスト
+        if: steps.gate.outputs.run == 'yes'
+        run: |
+          if ! node tests/smoke.mjs; then
+            echo "改善する前の時点でテストが落ちています。手で入れた変更のどこかが崩れている可能性があります。この回は何もしませんでした。" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
 
       - uses: anthropics/claude-code-action@v1
         if: steps.gate.outputs.run == 'yes'
@@ -321,12 +350,107 @@ jobs:
           VER=$(grep -o "APP_VER='[^']*'" index.html | head -1 | sed "s/APP_VER='//;s/'//")
           git config user.name "AO Compass Bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # 公開するのはこの4つだけ。node_modules などは絶対に入れない。
-          git add index.html
-          git add .gitignore || true
-          git add tests || true
-          git add .claude || true
-          git status --short
-          git commit -m "自動改善 $VER"
-          git push origin HEAD:main
-          echo "公開しました: $VER"
+
+          BASE=$(cat /tmp/before.sha)
+          cp index.html /tmp/ours.html
+
+          # 今回できたテストと記録を退避しておく（合流のときに巻き添えで消さないため）
+          rm -rf /tmp/keep; mkdir -p /tmp/keep
+          if [ -d tests ]; then cp -r tests /tmp/keep/; fi
+          if [ -d .claude ]; then cp -r .claude /tmp/keep/; fi
+          if [ -f .gitignore ]; then cp .gitignore /tmp/keep/; fi
+
+          DONE=no
+          for i in 1 2 3; do
+            git fetch -q origin main
+            REMOTE=$(git rev-parse origin/main)
+
+            # この回は20〜30分かかります。その間にご本人が index.html を直していることがあります。
+            # その場合は上書きせず、ご本人の編集の上に今回の改善を重ねます。
+            if [ "$REMOTE" != "$BASE" ]; then
+              echo "作業中にご本人の更新がありました。両方を合わせます。"
+              git show "$BASE:index.html"   > /tmp/mb.html
+              git show "$REMOTE:index.html" > /tmp/mt.html
+              cp /tmp/ours.html               /tmp/mo.html
+              THEIRVER=$(grep -o "APP_VER='[^']*'" /tmp/mt.html | head -1 | sed "s/APP_VER='//;s/'//")
+
+              # バージョンの行は必ずぶつかるので、いったん共通の目印にそろえてから合わせる
+              sed -i "s/APP_VER='[^']*'/APP_VER='__AOVER__'/" /tmp/mb.html /tmp/mt.html /tmp/mo.html
+
+              if ! git merge-file -q /tmp/mo.html /tmp/mb.html /tmp/mt.html; then
+                echo "今回は見送りました。ご本人が直したのと同じ場所を改善しようとしたため、自動では合わせられません。アプリはご本人の版のままです。" | tee -a "$GITHUB_STEP_SUMMARY"
+                exit 0
+              fi
+
+              # ご本人がつけた番号と同じにならないようにする
+              NEW="$VER"; D=$(echo "$VER" | cut -d- -f1); k=2
+              while [ "$NEW" = "$THEIRVER" ]; do NEW="$D-$k"; k=$((k+1)); done
+              sed -i "s/APP_VER='__AOVER__'/APP_VER='$NEW'/" /tmp/mo.html
+              VER="$NEW"
+
+              # ご本人の最新の上に載せ直す
+              git checkout -q -f "$REMOTE"
+              cp /tmp/mo.html index.html
+              if [ -d /tmp/keep/tests ]; then cp -r /tmp/keep/tests .; fi
+              if [ -d /tmp/keep/.claude ]; then cp -r /tmp/keep/.claude .; fi
+              if [ -f /tmp/keep/.gitignore ] && [ ! -f .gitignore ]; then cp /tmp/keep/.gitignore .; fi
+              cp index.html /tmp/ours.html
+              BASE="$REMOTE"
+
+              # 合わせた結果を、もう一度ぜんぶ確認する。ここが命綱です。
+              GIVEUP=""
+              grep -q '募集要項' index.html || GIVEUP="免責の帯が消えた"
+              grep -q "APP_VER='$VER'" index.html || GIVEUP="バージョンが入らなかった"
+              if grep -qE 'sk-ant-|sk-proj-|service_role' index.html; then GIVEUP="キーらしき文字列が出た"; fi
+              A=$(wc -c < /tmp/mt.html); B=$(wc -c < index.html)
+              awk -v a="$A" -v b="$B" 'BEGIN{ if (b < a*0.85 || b > a*1.30) exit 1 }' || GIVEUP="大きさが極端に変わった"
+              if [ -z "$GIVEUP" ] && ! node tests/smoke.mjs; then GIVEUP="テストが落ちた"; fi
+              if [ -n "$GIVEUP" ]; then
+                echo "合わせた結果に問題（$GIVEUP）があったので、今回は公開を見送りました。アプリはご本人の版のままです。" | tee -a "$GITHUB_STEP_SUMMARY"
+                exit 0
+              fi
+              echo "ご本人の編集と今回の改善を合わせました。"
+            fi
+
+            # 公開するのはこの4つだけ。node_modules などは絶対に入れない。
+            git add index.html
+            git add .gitignore || true
+            git add tests || true
+            git add .claude || true
+            git status --short
+            if git diff --cached --quiet; then
+              echo "公開するものがありませんでした。"
+              exit 0
+            fi
+            git commit -q -m "自動改善 $VER"
+
+            if git push origin HEAD:main; then
+              echo "公開しました: $VER"
+              echo "公開しました: $VER" >> "$GITHUB_STEP_SUMMARY"
+              DONE=yes
+              break
+            fi
+
+            echo "押し込みに失敗。少し待って再試行 $i"
+            git reset -q --soft HEAD~1   # 次の周回でやり直せるように戻す
+            sleep 10
+          done
+
+          if [ "$DONE" != "yes" ]; then
+            echo "3回試しましたが公開できませんでした。次の回にやり直します。" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      # 何が起きたかを Actions の画面に日本語で残す
+      - name: 結果を書く
+        if: always()
+        run: |
+          {
+            echo ""
+            echo "- 実行モード: ${{ steps.gate.outputs.run }}（時刻 ${{ steps.gate.outputs.hour }}時 UTC）"
+            echo "- index.html の変更: ${{ steps.check.outputs.changed || '（そこまで進みませんでした）' }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -f .claude/last-report.md ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            cat .claude/last-report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
