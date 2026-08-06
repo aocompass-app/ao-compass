@@ -533,7 +533,7 @@ a{color:var(--teal)}
 /* =========================================================================
    STORIA — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.11-11';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.11-12';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_BASE='aoCompass_v1';
 const LS_SCOPE_KEY='aoCompass_scope';
 /* ログイン中のデータは、アカウントごとの引き出しに入れます。
@@ -1443,6 +1443,50 @@ function schoolName(id){ const s=S.schools.find(x=>x.id===id); return s?s.name:'
 /* =========================================================================
    ホーム
    ========================================================================= */
+/* 何から始めればいいか分からない人のための「はじめの3ステップ」。
+   全部終わっていれば出さない（画面をうるさくしないため）。 */
+function startStepsCard(){
+  const nAct=(S.activities||[]).length;
+  let nSelf=0; try{ nSelf=SELF_Q.filter(q=>(S.self.answers||{})[q.id]).length; }catch(e){}
+  const nSch=(S.schools||[]).length;
+  const steps=[
+    {ok:nAct>=1, ic:'🏅', t:'これまでにやってきたことを書き出す',
+     d:'部活・委員会・ボランティア・趣味・アルバイトなど。小さくて大丈夫です。ここが全部の材料になります。',
+     btn:'活動を書き出す', go:'portfolio', now:nAct?nAct+'件 登録済み':''},
+    {ok:nSelf>=3, ic:'🔎', t:'自己分析の質問に答える',
+     d:'答えた言葉が、そのまま志望理由書や自己PRの下書きになります。3問答えれば形になります。',
+     btn:'質問に答える', go:'self', now:nSelf?nSelf+'問 回答済み':''},
+    {ok:nSch>=1, ic:'🎓', t:'気になる大学を登録する',
+     d:'まだ決まっていなくても、気になっている大学で大丈夫です。あとから変えられます。',
+     btn:'大学を登録する', go:'schools', now:nSch?nSch+'校 登録済み':''}
+  ];
+  const done=steps.filter(s=>s.ok).length;
+  if(done>=steps.length) return null;
+  const c=el('div','card');
+  c.innerHTML='<div class="card-title"><span class="ic">🚩</span><h3>はじめの3ステップ</h3></div>'
+    +'<p class="small muted">上から順にやれば大丈夫です。いま '+done+' / '+steps.length+' 完了。</p>';
+  steps.forEach((s,i)=>{
+    const r=el('div','card tight'); r.style.marginTop='8px';
+    if(s.ok) r.style.opacity='0.65';
+    r.innerHTML='<div class="small"><b>'+(s.ok?'✅':s.ic)+' '+(i+1)+'. '+esc(s.t)+'</b>'
+      +(s.now?' <span class="badge ok">'+esc(s.now)+'</span>':'')+'</div>'
+      +'<div class="xsmall muted" style="margin-top:3px">'+esc(s.d)+'</div>';
+    if(!s.ok){
+      const bt=el('button','btn sm '+(i===done?'primary':'ghost'),s.btn);
+      bt.style.marginTop='6px'; bt.onclick=()=>go(s.go);
+      r.appendChild(bt);
+    }
+    c.appendChild(r);
+  });
+  if(steps[0].ok&&steps[1].ok){
+    const n=el('div','note info'); n.style.marginTop='10px';
+    n.innerHTML='ここまで入れたら、AIに相談できます。書いた内容から「どこをアピールに使えるか」を一緒に探します。';
+    const ib=el('button','btn sm teal','💡 AIに相談する'); ib.style.marginTop='6px';
+    ib.onclick=()=>{ try{ aiIdea(); }catch(e){ go('ai'); } };
+    n.appendChild(ib); c.appendChild(n);
+  }
+  return c;
+}
 function vHome(){
   const w=el('div','view');
   const primary=S.schools.find(s=>s.id===S.meta.primarySchoolId)||S.schools[0];
@@ -1450,15 +1494,17 @@ function vHome(){
     const _n0=(S.profile&&S.profile.name||'').trim();
     w.appendChild(pageHead(_n0&&S.prefs&&S.prefs.greet!==false?_n0+'さん、ようこそ':'ようこそ','総合型選抜の準備を、ここで一気通貫に'));
     const c=el('div','card');
-    c.innerHTML='<div class="card-title"><span class="ic">🧭</span><h3>STORIA へようこそ</h3></div><p class="small muted">「自己分析 → 志望校研究 → 出願戦略 → 書類作成 → 面接・小論文 → 出願」を一か所で管理できます。まずは「志望校」から登録を。入力の仕方は下の「使い方を見る」でも確認できます。</p>';
+    c.innerHTML='<div class="card-title"><span class="ic">🧭</span><h3>STORIA へようこそ</h3></div><p class="small muted">何から始めればいいか分からなくて大丈夫です。<b>まず、これまでにやってきたことを書き出すところから</b>始めます。志望校が決まっていなくても進められます。</p>';
     const row=el('div','btn-row'); row.style.marginTop='10px';
-    const b2=el('button','btn primary','志望校を登録する'); b2.onclick=()=>go('schools');
+    const b1=el('button','btn primary','① まず活動を書き出す'); b1.onclick=()=>go('portfolio');
     const b3=el('button','btn ghost','使い方を見る'); b3.onclick=()=>openWelcome(true);
-    row.append(b2,b3); c.appendChild(row); w.appendChild(c);
+    row.append(b1,b3); c.appendChild(row); w.appendChild(c);
+    const sc0=startStepsCard(); if(sc0) w.appendChild(sc0);
     w.appendChild(privacyNote()); return w;
   }
   const _nm=(S.profile&&S.profile.name||'').trim();
   w.appendChild(pageHead(_nm&&S.prefs&&S.prefs.greet!==false?_nm+'さん、おかえりなさい':'ホーム','次にやることが、ひと目で分かります'));
+  { const sc=startStepsCard(); if(sc){ sc.style.marginBottom='12px'; w.appendChild(sc); } }
 
   // ヒーロー：第一志望＋カウントダウン
   const hero=el('div','card');
@@ -2693,6 +2739,25 @@ function editSchool(id){
 /* =========================================================================
    書類（志望理由書エディター＋AI出願書類コーチ）
    ========================================================================= */
+/* 書類を1件消す。間違って必要な資料を消さないよう、必ず中身つきで確認してから消す。 */
+function deleteDoc(id,after){
+  const d=S.documents.find(x=>x.id===id); if(!d) return;
+  const n=countJP(d.body||'');
+  const vn=(d.versions||[]).length, fn=(d.feedbacks||[]).length;
+  let extra='';
+  if(n) extra+='本文'+n+'字';
+  if(vn) extra+=(extra?'／':'')+'保存したバージョン'+vn+'件';
+  if(fn) extra+=(extra?'／':'')+'添削メモ'+fn+'件';
+  const msg='「'+(d.title||'無題')+'」を削除します。'+(extra?extra+'もいっしょに消えます。':'')+'元に戻せません。本当に削除しますか？';
+  confirmDelete(msg,()=>{
+    S.documents=S.documents.filter(x=>x.id!==id);
+    try{ syncDocTasks(); }catch(e){}
+    save();
+    if(after) after();
+    render();
+    toast('削除しました','ok');
+  });
+}
 function vDocuments(){
   const w=el('div','view');
   const add=el('button','btn primary sm','＋ 新規'); add.onclick=()=>newDoc();
@@ -2713,7 +2778,8 @@ function vDocuments(){
     const row=el('div','btn-row'); row.style.marginTop='10px';
     const open=el('button','btn sm primary','エディターを開く'); open.onclick=()=>openDocEditor(d.id);
     const ai=el('button','btn sm','AI分析'); ai.onclick=()=>{openDocEditor(d.id,'ai');};
-    row.append(open,ai); c.appendChild(row); w.appendChild(c);
+    const del=el('button','btn sm danger','削除'); del.onclick=()=>deleteDoc(d.id);
+    row.append(open,ai,del); c.appendChild(row); w.appendChild(c);
   });
   return w;
 }
@@ -2850,7 +2916,8 @@ function openDocEditor(id,tab){
       const imp=el('button','btn sm teal','📎 ファイルを読み込む（PDF/Word/パワポ）'); imp.onclick=()=>pickFile('.pdf,.docx,.pptx,.txt,.md,.csv',(text,meta)=>{ ta.value = ta.value.trim() ? (ta.value.trim()+'\n\n'+text) : text; updateCnt(); d.body=ta.value; d.sourceFile=meta.name||d.sourceFile; touchDoc(d); toast('「'+(meta.name||'ファイル')+'」を読み込みました','ok'); });
       const saveV=el('button','btn sm','この内容をバージョン保存'); saveV.onclick=()=>{ d.body=ta.value; d.versions=d.versions||[]; d.versions.unshift({ts:Date.now(),body:ta.value}); touchDoc(d); toast('バージョンを保存しました','ok'); };
       const dup=el('button','btn sm ghost','この下書きを複製'); dup.onclick=()=>{ const c={...d,id:uid(),title:d.title+'（複製）',versions:[],feedbacks:(d.feedbacks||[]).map(x=>({...x})),updatedAt:Date.now(),body:ta.value}; S.documents.push(c); save(); toast('複製しました','ok'); closeSheet(); go('documents'); };
-      row.append(imp,saveV,dup); pane.appendChild(row);
+      const delD=el('button','btn sm danger','この書類を削除'); delD.onclick=()=>deleteDoc(d.id,()=>{ try{ closeSheet(); }catch(e){} });
+      row.append(imp,saveV,dup,delD); pane.appendChild(row);
       const nb=fieldText('メモ（段落メモ・自分用）',d.notes,null,{area:true,rows:2}); nb.querySelector('textarea').onchange=e=>{d.notes=e.target.value;touchDoc(d);}; pane.appendChild(nb);
     }
     function paneAI(){
@@ -3145,8 +3212,9 @@ function tutorialSteps(){ return [
   {ic:'🔎',t:'① 過去を整理する',d:'部活・委員会・ボランティア・趣味などを書き出し、自分でも気づいていない強みを見つけます。「自己分析」や「ポートフォリオ」から始められます。'},
   {ic:'🧭',t:'② 未来につなげる',d:'志望理由や将来の目標を明確にして、一貫したストーリーにします。「志望校」や「ストーリー設計」で整理しましょう。'},
   {ic:'✍️',t:'③ 伝わる形にする',d:'志望理由書や面接で「この人を応援したい」と思ってもらえる表現に落とし込みます。「書類」「面接」で練習できます。'},
-  {ic:'📝',t:'こうやって入力します',d:'まず「志望校」タブで大学を登録し、必要書類を1件ずつ入れます（志望理由書・活動報告書…のように1つずつ）。次に「書類」タブで本文を書き、「面接」タブで練習。入力した内容は自動でタスクや取り組み状況に反映されます。'},
-  {ic:'🚀',t:'さあ、始めましょう',d:'下のタブでホーム・志望校・書類・面接を移動できます。右上の丸いアイコンはあなたのプロフィール。「志望校」の登録から始めてみましょう。'}
+  {ic:'📝',t:'こうやって入力します',d:'順番はこうです。①「活動実績」に、これまでやってきたことを書き出す（部活・委員会・ボランティア・趣味・アルバイト。小さくて大丈夫）。②「自己分析」の質問に答える。ここまでが全部の材料になります。③「志望校」に気になる大学を登録し、必要書類を1件ずつ入れる。④「書類」で本文を書き、「面接」で練習。入力した内容は自動でタスクや取り組み状況に反映されます。'},
+  {ic:'💡',t:'書けないときは、AIに相談できます',d:'活動と自己分析を入れておくと、AIがあなたの入力をもとに「どこをアピールに使えるか」「どの経験が書類に効くか」を提案します。ホームの「AIに相談する」か、書類の「AI分析」から使えます。AIが経験を作り出すことはありません。'},
+  {ic:'🚀',t:'さあ、始めましょう',d:'下のタブでホーム・志望校・書類・面接を移動できます。右上の丸いアイコンはあなたのプロフィール。まずはホームの「はじめの3ステップ」の①から。志望校が決まっていなくても進められます。'}
 ]; }
 function openWelcome(reonly){
   openSheet(reonly?'STORIAの使い方':'ようこそ',(b,close)=>{
@@ -3396,7 +3464,11 @@ const SELF_TAGS=[['strengths','自分の強み'],['values','大切にしてい�
 function vSelf(){
   const w=el('div','view');
   w.appendChild(pageHead('自己分析ワーク','質問に答えて、自分を言葉にする'));
-  w.appendChild(el('div','note info','正解はありません。思いついたことをそのまま書いてOK。あとで書類や面接の材料になります。'));
+  { const nt=el('div','note info');
+    nt.innerHTML='正解はありません。思いついたことをそのまま書いてOK。あとで書類や面接の材料になります。';
+    const ib=el('button','btn sm teal','💡 答えに詰まったらAIに相談する'); ib.style.marginTop='6px';
+    ib.onclick=()=>{ try{ aiIdea(); }catch(e){ go('ai'); } };
+    nt.appendChild(ib); w.appendChild(nt); }
   const answered=SELF_Q.filter(q=>S.self.answers[q.id]).length; const pr=Math.round(answered/SELF_Q.length*100);
   const pc=el('div','card tight');
   const drawProg=()=>{ const a=SELF_Q.filter(q=>S.self.answers[q.id]).length; const r=Math.round(a/SELF_Q.length*100);
@@ -3483,7 +3555,11 @@ function vPortfolio(){
   const w=el('div','view');
   const add=el('button','btn primary sm','＋ 活動追加'); add.onclick=()=>editActivity(null);
   w.appendChild(pageHead('活動実績ポートフォリオ','実績の大きさより、あなたの行動・工夫・成長',add));
-  w.appendChild(el('div','note info','小さな活動でも大丈夫。「なぜ始め、何を工夫し、何が変わったか」が伝われば強い材料になります。'));
+  { const nt=el('div','note info');
+    nt.innerHTML='小さな活動でも大丈夫。「なぜ始め、何を工夫し、何が変わったか」が伝われば強い材料になります。';
+    const ib=el('button','btn sm teal','💡 何を書けばいいかAIに相談する'); ib.style.marginTop='6px';
+    ib.onclick=()=>{ try{ aiIdea(); }catch(e){ go('ai'); } };
+    nt.appendChild(ib); w.appendChild(nt); }
   const q=el('input','input'); q.placeholder='活動名・カテゴリーで検索'; q.value=vPortfolio._q||''; const sb=el('div','searchbar');sb.appendChild(q);w.appendChild(sb);
   q.oninput=()=>{vPortfolio._q=q.value;render();};
   let arr=S.activities.slice(); const kw=(vPortfolio._q||'').trim(); if(kw)arr=arr.filter(a=>(a.name+a.category).includes(kw));
@@ -4441,13 +4517,83 @@ async function runAnalyzeAI(text,ctx){
   { const ps=String(text||'').split(/\n\s*\n|\n/).map(x=>x.trim()).filter(Boolean);
     u+='【本文】'+(ps.length>1?'（段落番号つき。structureのparaはこの番号を使う）':'')+'\n'
       +(ps.length>1?ps.map((x,i)=>'['+(i+1)+'] '+x).join('\n'):text); }
+  /* 本人が別の欄に入れた活動履歴・自己分析も渡す。
+     本文に無い材料を「使えるのに使っていない」と指摘できるようにするため。 */
+  const bg=profileBrief();
+  if(bg.text){
+    u+='\n'+bg.text;
+    sys+='\n【本人の登録情報】は、本人が別の画面に入力した本当の活動・自己分析です。'
+      +'これを本文と突き合わせ、(a)本文に使えるのにまだ使われていない具体的な経験があれば missing に入れる、'
+      +'(b)登録情報と本文が食い違っていれば findings の事実確認として指摘する、'
+      +'(c)登録情報にある強みが本文で裏づけられていなければ指摘する、の3点を必ず見ること。'
+      +'登録情報に書かれていないことを本人の経験として作り出してはいけない。'
+      +'また、登録情報そのものを評価対象（scores）にはしない。採点するのはあくまで【本文】。';
+  }
   const raw=await callAI(sys,u,{json:true,max:4600});
   const j=extractJSON(raw); if(!j||!j.scores) throw new Error('AIの応答をうまく解釈できませんでした。もう一度お試しください。');
+  j._used={acts:bg.acts,self:bg.self,tags:bg.tags};
   return j;
+}
+/* 活動履歴と自己分析を、AIに渡せる短い文章にまとめる */
+function profileBrief(){
+  const out={text:'',acts:0,self:0,tags:0};
+  try{
+    const lines=[];
+    const acts=(S.activities||[]).slice(0,12);
+    if(acts.length){
+      lines.push('【本人の登録情報：活動履歴】');
+      acts.forEach(a=>{
+        const p=[a.name||''];
+        if(a.category)p.push('分野:'+a.category);
+        if(a.period)p.push('時期:'+a.period);
+        if(a.role)p.push('役割:'+a.role);
+        const body=[
+          a.motivation?'きっかけ:'+a.motivation:'',
+          a.actions?'したこと:'+a.actions:'',
+          a.ingenuity?'工夫:'+a.ingenuity:'',
+          a.difficulty?'困難:'+a.difficulty:'',
+          a.learning?'学び:'+a.learning:'',
+          a.result?'結果:'+a.result:'',
+          a.connection?'大学との接続:'+a.connection:''
+        ].filter(Boolean).join(' / ');
+        lines.push('・'+p.filter(Boolean).join('／')+(body?'：'+clip(body,240):''));
+      });
+      out.acts=acts.length;
+    }
+    const ans=(S.self&&S.self.answers)||{};
+    const qs=(typeof SELF_Q!=='undefined'?SELF_Q:[]).filter(q=>ans[q.id]).slice(0,10);
+    if(qs.length){
+      lines.push('【本人の登録情報：自己分析の回答】');
+      qs.forEach(q=>lines.push('・'+q.q+' → '+clip(ans[q.id],160)));
+      out.self=qs.length;
+    }
+    const tg=(S.self&&S.self.tags)||{};
+    const tl=[];
+    Object.keys(tg).forEach(k=>{ if((tg[k]||[]).length) tl.push(k+'：'+tg[k].join('、')); });
+    if(tl.length){ lines.push('【本人の登録情報：自己分析タグ】'); tl.forEach(x=>lines.push('・'+x)); out.tags=tl.length; }
+    if(lines.length) out.text=lines.join('\n')+'\n';
+  }catch(e){}
+  return out;
 }
 function renderAnalysisReal(b,a,text,opts){
   opts=opts||{};
   const _doc=opts.doc||(typeof _analyzeDoc!=='undefined'?_analyzeDoc:null);
+  if(a&&a._used){ const u=a._used; const parts=[];
+    if(u.acts)parts.push('活動履歴 '+u.acts+'件');
+    if(u.self)parts.push('自己分析の回答 '+u.self+'問');
+    if(u.tags)parts.push('自己分析タグ '+u.tags+'項目');
+    const src=el('div','note info'); src.style.marginBottom='8px';
+    if(parts.length){
+      src.innerHTML='📎 <b>この分析が見たもの</b><br>この書類の本文＋'+esc(parts.join('・'))
+        +'<br><span class="xsmall muted">点数は本文だけを採点しています。活動履歴と自己分析は「本文に使えるのに使っていない材料」を見つけるために参照しました。</span>';
+    } else {
+      src.innerHTML='📎 <b>この分析が見たもの</b><br>この書類の本文だけです。'
+        +'<br><span class="xsmall muted">「活動実績」と「自己分析ワーク」を入れておくと、書けるのに書けていない材料まで指摘できます。</span>';
+      const jb=el('button','btn sm ghost','活動実績を入れる'); jb.style.marginTop='6px'; jb.onclick=()=>{ try{ closeSheet(); }catch(e){} go('portfolio'); };
+      src.appendChild(jb);
+    }
+    b.appendChild(src);
+  }
   if(!opts.noNote){ const note=el('div','note'); note.innerHTML='🤖 <b>'+esc(opts.label||aiLabel())+'による分析です。</b>AIは経験を捏造しません。指摘に沿って、あなた自身の言葉で直してください。提出前に本人・先生の確認を。'; b.appendChild(note); }
   if(a.scores){ tgCard(b,{icon:'📋',title:'評価シート',right:'合否予測ではありません',key:'an.score',open:true,accent:'navy'},(sc)=>{
     renderScoreCard(sc,a.scores,{doc:_doc,text:text,noHistory:!!opts.noHistory,kind:'ai'}); }); }
@@ -4532,6 +4678,9 @@ async function runOutlineAI(limit,school,acts,q){
 async function runIdeaAI(answers){
   const sys=AI_RULES+'\nこれは「アイデア相談」です。本人の回答をもとに、(1)使えそうなエピソードの候補、(2)アピールの軸の候補（方向性の異なるもの2〜3個）、(3)まだ聞けていない点を深掘りする追加の質問、を日本語で整理してください。回答に無い事実は作らないこと。文章は完成させず、材料の整理と問いかけにとどめます。「## 使えるエピソード」「## アピールの軸(候補)」「## さらに深掘りする質問」の見出しで。';
   let u='【本人の回答】\n'+answers.map((a,i)=>(i+1)+'. '+a).join('\n');
+  /* すでにアプリに入っている活動履歴・自己分析も材料にする */
+  const bg=profileBrief();
+  if(bg.text) u+='\n\n'+bg.text+'（この登録情報も材料にしてよい。ただしここに無いことを作り出さない）';
   return await callAI(sys,u,{max:1600});
 }
 async function runInterviewQAI(doc){
@@ -4871,8 +5020,13 @@ function aiIdea(){
   const ans={};
   openSheet('💡 アイデア相談',(b)=>{
     b.appendChild(el('div','note info','AIはすぐに文章を作りません。まず質問に答えてください。答えから、使えそうな材料を整理します。'));
+    { const bg=profileBrief(); const ps=[];
+      if(bg.acts)ps.push('活動履歴 '+bg.acts+'件');
+      if(bg.self)ps.push('自己分析の回答 '+bg.self+'問');
+      if(ps.length){ const n=el('div','note'); n.style.marginBottom='8px';
+        n.innerHTML='📎 すでに入力済みの<b>'+esc(ps.join('・'))+'</b>も、いっしょに材料として使います。'; b.appendChild(n); } }
     QS.forEach((q,i)=>{ const f=fieldText((i+1)+'. '+q,'',null,{area:true,rows:2}); f._key=i; b.appendChild(f); ans[i]=f; });
-    if(aiReady()){ const runR=el('button','btn primary block','🤖 '+aiLabel()+'に整理・深掘りしてもらう'); runR.onclick=()=>{ const filled=Object.entries(ans).filter(([i,f])=>f.get()); if(filled.length<2){toast('2つ以上答えると整理できます','warn');return;} const arr=QS.map((q,i)=>ans[i].get()?(q+' → '+ans[i].get()):null).filter(Boolean); aiTextSheet('💡 整理された材料と深掘り','あなたの回答をもとにAIが材料を整理し、さらに深掘りする質問を返します。捏造はしません。',()=>runIdeaAI(arr)); }; b.appendChild(runR); const alt=el('button','btn ghost sm block','簡易整理（オフライン）で見る');alt.style.marginTop='8px';alt.onclick=()=>ideaSimple(QS,ans); b.appendChild(alt); return; }
+    if(aiReady()){ const runR=el('button','btn primary block','🤖 '+aiLabel()+'に整理・深掘りしてもらう'); runR.onclick=()=>{ const filled=Object.entries(ans).filter(([i,f])=>f.get()); const _bg=profileBrief(); const _need=(_bg.acts||_bg.self)?1:2; if(filled.length<_need){toast(_need+'つ以上答えると整理できます','warn');return;} const arr=QS.map((q,i)=>ans[i].get()?(q+' → '+ans[i].get()):null).filter(Boolean); aiTextSheet('💡 整理された材料と深掘り','あなたの回答をもとにAIが材料を整理し、さらに深掘りする質問を返します。捏造はしません。',()=>runIdeaAI(arr)); }; b.appendChild(runR); const alt=el('button','btn ghost sm block','簡易整理（オフライン）で見る');alt.style.marginTop='8px';alt.onclick=()=>ideaSimple(QS,ans); b.appendChild(alt); return; }
     const run=el('button','btn primary block','材料を整理する'); run.onclick=()=>ideaSimple(QS,ans); b.appendChild(run);
     const c=el('button','btn ghost sm block','🔌 本物のAIに接続する');c.style.marginTop='8px';c.onclick=()=>openAISettings(); b.appendChild(c);
   });
