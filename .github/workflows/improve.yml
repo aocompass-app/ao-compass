@@ -61,45 +61,59 @@ jobs:
             exit 1
           fi
 
-          # 2) 使えるものの中から一番良いAIを選ぶ（勝手な名前を指定して弾かれるのを防ぐ）
-          PICK=$(node -e '
+          # 2) 良い順に候補を並べる
+          CANDS=$(node -e '
             var d = JSON.parse(require("fs").readFileSync("/tmp/models.json","utf8"));
             var ids = (d.data || []).map(function(m){ return m.id; });
-            var pick = ids.filter(function(x){ return /opus/.test(x); })[0]
-                    || ids.filter(function(x){ return /sonnet/.test(x); })[0]
-                    || ids[0] || "";
-            console.log(pick);
+            var by = function(re){ return ids.filter(function(x){ return re.test(x); }); };
+            var order = by(/opus/).concat(by(/sonnet/)).concat(by(/haiku/)).concat(ids);
+            var seen = {}, out = [];
+            order.forEach(function(x){ if (x && !seen[x]) { seen[x] = 1; out.push(x); } });
+            console.log(out.slice(0, 8).join(" "));
           ')
-          echo "選んだAI: $PICK"
+          echo "候補: $CANDS"
 
-          {
-            echo "### この鍵で使えるAI"
-            node -e 'var d=JSON.parse(require("fs").readFileSync("/tmp/models.json","utf8"));(d.data||[]).forEach(function(m){console.log("- `"+m.id+"`")})'
-            echo ""
-            echo "今回使うAI: \`$PICK\`"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          if [ -z "$PICK" ]; then
+          if [ -z "$CANDS" ]; then
             echo "使えるAIが1つもありませんでした。" | tee -a "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
 
-          # 3) 1文字だけ投げて、残高や上限で止められていないか確かめる
-          C2=$(curl -sS -m 30 -o /tmp/probe.json -w '%{http_code}' \
-            https://api.anthropic.com/v1/messages \
-            -H "x-api-key: $KEY" -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
-            -d "{\"model\":\"$PICK\",\"max_tokens\":1,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}" || echo 000)
-          echo "試し打ちの応答: $C2"
+          # 3) 1文字だけ投げて、実際に返事が来るものを上から順に探す。
+          #    一覧に載っていても、残高や権限で呼べないことがあるため。
+          GOOD=""
+          TRIED=""
+          FIRSTERR=""
+          for M in $CANDS; do
+            C2=$(curl -sS -m 30 -o /tmp/probe.json -w '%{http_code}' \
+              https://api.anthropic.com/v1/messages \
+              -H "x-api-key: $KEY" -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
+              -d "{\"model\":\"$M\",\"max_tokens\":1,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}" || echo 000)
+            echo "試し打ち $M -> $C2"
+            TRIED="$TRIED
+          - \`$M\` … $C2"
+            if [ "$C2" = "200" ]; then GOOD="$M"; break; fi
+            if [ -z "$FIRSTERR" ]; then FIRSTERR=$(head -c 600 /tmp/probe.json); fi
+          done
 
-          if [ "$C2" != "200" ]; then
-            { echo "## AIを呼べませんでした（$C2）";
-              echo "残高不足・利用上限・権限のいずれかです。下の英語のメッセージがそのまま理由です。";
-              echo '```'; head -c 700 /tmp/probe.json; echo; echo '```'; } | tee -a "$GITHUB_STEP_SUMMARY"
+          {
+            echo "### 試し打ちの結果"
+            echo "$TRIED"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -z "$GOOD" ]; then
+            { echo "## どのAIも呼べませんでした";
+              echo "鍵は生きていますが、返事が返ってきません。残高不足・利用上限・鍵の権限のどれかです。";
+              echo "console.anthropic.com の Billing（残高）と Limits（上限）を見てください。";
+              echo "";
+              echo "最初のエラーの中身:";
+              echo '```'; echo "$FIRSTERR"; echo; echo '```'; } | tee -a "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
 
-          echo "鍵も残高も問題なし"
-          echo "modelarg=--model $PICK" >> "$GITHUB_OUTPUT"
+          echo "使うAI: $GOOD"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "今回使うAI: \`$GOOD\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "modelarg=--model $GOOD" >> "$GITHUB_OUTPUT"
 
       # 案が尽きてきたら 1日1回だけ動かすモードに落とす
       - id: gate
