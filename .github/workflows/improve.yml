@@ -212,7 +212,6 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           claude_args: |
             --max-turns 60
-            --model claude-opus-5
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash"
           prompt: |
             あなたはこのリポジトリの開発者です。質問はせず、最後まで自分で進めてください。
@@ -450,6 +449,22 @@ jobs:
             echo "- 実行モード: ${{ steps.gate.outputs.run }}（時刻 ${{ steps.gate.outputs.hour }}時 UTC）"
             echo "- index.html の変更: ${{ steps.check.outputs.changed || '（そこまで進みませんでした）' }}"
           } >> "$GITHUB_STEP_SUMMARY"
+          # AIがうまく動かなかったとき、その理由をここに出す（ログを探さなくて済むように）
+          LOG=/home/runner/work/_temp/claude-execution-output.json
+          if [ -f "$LOG" ]; then
+            MSG=$(node -e '
+              try {
+                const a = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+                const list = Array.isArray(a) ? a : [a];
+                const hit = list.reverse().find(x => x && (x.is_error || x.error));
+                if (hit) console.log(JSON.stringify(hit.error || hit.result || hit).slice(0, 800));
+              } catch (e) {}
+            ' "$LOG" 2>/dev/null || true)
+            if [ -n "$MSG" ]; then
+              { echo ""; echo "### AIが止まった理由"; echo '```'; echo "$MSG"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+
           if [ -f .claude/last-report.md ]; then
             echo "" >> "$GITHUB_STEP_SUMMARY"
             cat .claude/last-report.md >> "$GITHUB_STEP_SUMMARY"
