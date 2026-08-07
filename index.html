@@ -533,7 +533,7 @@ a{color:var(--teal)}
 /* =========================================================================
    STORIA — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.07-4';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.07-5';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_BASE='aoCompass_v1';
 const LS_SCOPE_KEY='aoCompass_scope';
 /* ログイン中のデータは、アカウントごとの引き出しに入れます。
@@ -1598,16 +1598,33 @@ function vHome(){
   const side=el('div');
   const dcard=el('div','card');
   dcard.innerHTML='<div class="card-title"><span class="ic">📝</span><h3>作成中の書類</h3></div>';
-  const drafts=S.documents.filter(d=>d.status!=='完成').slice(0,3);
+  const draftAll=homeDraftList();
+  const drafts=draftAll.slice(0,3).map(function(x){ return x.d; });
   if(!drafts.length) dcard.appendChild(el('p','small muted','作成中の書類はありません。'));
-  drafts.forEach(d=>{ const r=el('div','list-row'); const len=countJP(d.body); r.innerHTML=`<div style="flex:1"><b class="small">${esc(d.title)}</b><div class="xsmall muted">${esc(schoolName(d.schoolId)||'—')} ・ ${len}${d.charLimit?'/'+d.charLimit:''}字 <span class="badge ${d.status==='完成'?'ok':'warn'}">${esc(d.status)}</span></div></div>`; const b=el('button','btn sm','開く'); b.onclick=()=>{go('documents');setTimeout(()=>openDocEditor(d.id),50);}; r.appendChild(b); dcard.appendChild(r); });
+  const _ad=alertDays();
+  draftAll.slice(0,3).forEach(function(x){
+    const d=x.d, nx=x.nx; const r=el('div','list-row'); const len=countJP(d.body);
+    /* 締切の近さのバッジ。日程が分からない書類には付けない（嘘の期限を作らないため） */
+    const dcls=!nx?'':nx.days<=_ad?'alert':nx.days<=_ad*2?'warn':'grey';
+    const dbadge=nx?' <span class="badge '+dcls+'" title="'+esc(nx.label+' '+fmtDate(nx.iso))+'">'+esc(nx.label)+(nx.days===0?' 今日':' あと'+nx.days+'日')+'</span>':'';
+    r.setAttribute('data-hdoc',d.id||'');
+    r.innerHTML='<div style="flex:1"><b class="small">'+esc(d.title)+'</b><div class="xsmall muted">'
+      +esc(shortName(schoolName(d.schoolId))||'—')+' ・ '+len+(d.charLimit?'/'+d.charLimit:'')+'字 '
+      +'<span class="badge '+(d.status==='完成'?'ok':'warn')+'">'+esc(d.status)+'</span>'+dbadge+'</div></div>';
+    const b=el('button','btn sm','開く'); b.onclick=function(){go('documents');setTimeout(function(){openDocEditor(d.id);},50);};
+    r.appendChild(b); dcard.appendChild(r);
+  });
+  if(draftAll.length>3) dcard.appendChild(el('p','xsmall muted','ほか'+(draftAll.length-3)+'件は「書類」タブにあります（締切が近いものから並べています）。'));
   side.appendChild(dcard);
 
   const icard=el('div','card');
   icard.innerHTML='<div class="card-title"><span class="ic">🎤</span><h3>次の面接練習</h3></div>';
-  const weakQ=S.interview.filter(q=>q.weak||!q.answer).slice(0,3);
+  /* 苦手を先に。登録順のままだと、苦手が4番目以降にあるとホームに一切出てこない */
+  const weakAll=(S.interview||[]).filter(q=>q.weak||!q.answer).sort((a,b)=>(b.weak?1:0)-(a.weak?1:0));
+  const weakQ=weakAll.slice(0,3);
   if(!weakQ.length) icard.appendChild(el('p','small muted','登録された質問はありません。'));
   weakQ.forEach(q=>{ const r=el('div','list-row'); r.innerHTML=`<div style="flex:1"><span class="small">${esc(q.question)}</span> ${q.weak?'<span class="badge alert">苦手</span>':'<span class="badge grey">未回答</span>'}</div>`; const b=el('button','btn sm','練習'); b.onclick=()=>{go('interview');setTimeout(()=>openInterview(q.id),50);}; r.appendChild(b); icard.appendChild(r); });
+  if(weakAll.length>3) icard.appendChild(el('p','xsmall muted','ほか'+(weakAll.length-3)+'問は「面接」タブにあります（苦手なものから並べています）。'));
   side.appendChild(icard);
   grid.appendChild(side);
   w.appendChild(grid);
@@ -1643,6 +1660,27 @@ function homeDeadlinesCard(primary){
   });
   if(list.length>3) c.appendChild(el('p','xsmall muted','ほか'+(list.length-3)+'校の日程は「志望校」タブで確認できます。'));
   return c;
+}
+/* 作成中の書類を「締切が近い大学のものから」並べる。
+   登録順のままだと、締切がまだ遠い大学の書類がホームの3件を占めてしまい、
+   いちばん急いで書くべき書類が下に埋もれて見えなくなる。
+   出願締切がまだ残っていればそれを、過ぎていれば次の日程（試験日など）を「近さ」に使う。
+   志望校が未設定の書類は日程が分からないので最後に置く。 */
+function homeDraftList(){
+  const arr=(S.documents||[]).filter(function(d){ return d.status!=='完成'; });
+  const out=arr.map(function(d,i){
+    const s=(S.schools||[]).find(function(x){ return x.id===d.schoolId; });
+    const dl=s?daysUntil(s.deadline):null;
+    let nx=null;
+    if(dl!=null&&dl>=0) nx={label:'出願締切',iso:s.deadline,days:dl};
+    else if(s) nx=nextSchoolDate(s);
+    return {d:d,school:s,nx:nx,days:nx?nx.days:null,i:i};
+  });
+  out.sort(function(a,b){
+    const ax=(a.days==null)?999999:a.days, bx=(b.days==null)?999999:b.days;
+    return (ax===bx)?(a.i-b.i):(ax-bx);
+  });
+  return out;
 }
 function homeTodayCard(){
   const today=todayISO();
@@ -1680,11 +1718,22 @@ function homeTodayCard(){
   row.append(cal,re); c.appendChild(row);
   return c;
 }
+/* 「今日のひとこと」。出願締切だけを見ていたので、締切を過ぎると
+   試験が数日後でも助言が消えて「経験の棚卸しから…」に戻ってしまっていた。
+   次に来る日程（エントリー開始／出願締切／試験日／合格発表）に合わせて中身を変える。 */
+const ADVICE_TAIL={
+  entryStart:'開始前に募集要項と必要書類をそろえておくと、あとが楽になります。',
+  deadline:'今週は書類の推敲と面接練習に集中しましょう。',
+  examDate:'面接・小論文の練習と、当日の持ち物・会場までの行き方を確認しておきましょう。',
+  resultDate:'待つあいだも、併願校の準備と学校の課題は止めずに進めておきましょう。'
+};
 function homeAdvice(primary){
-  const dd=primary?daysUntil(primary.deadline):null;
-  const draft=S.documents.find(d=>d.status!=='完成');
+  const nx=primary?nextSchoolDate(primary):null;
+  const draft=homeDraftList().map(function(x){ return x.d; })[0];
   const bits=[];
-  if(dd!=null&&dd>=0&&dd<=30) bits.push(`出願まで残り<b>${dd}日</b>です。今週は書類の推敲と面接練習に集中しましょう。`);
+  if(nx&&nx.days<=30&&ADVICE_TAIL[nx.key]){
+    bits.push(esc(nx.label)+(nx.days===0?'は<b>今日</b>です。':'まで<b>あと'+nx.days+'日</b>です。')+ADVICE_TAIL[nx.key]);
+  }
   if(draft){ const a=analyzeText(draft.body,{charLimit:draft.charLimit,school:S.schools.find(s=>s.id===draft.schoolId),question:draft.question}); if(a.priorities.length) bits.push(`「${esc(draft.title)}」は、まず<b>${esc(a.priorities[0].title)}</b>から直すと良さそうです。`); }
   if(!bits.length) bits.push('経験の棚卸し（自己分析・活動実績）が、書類と面接の土台になります。少しずつ言葉にしていきましょう。');
   bits.push('※AIは合否を判断しません。最後は必ずあなた自身の言葉で確認してください。');
