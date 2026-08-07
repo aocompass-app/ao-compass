@@ -533,7 +533,7 @@ a{color:var(--teal)}
 /* =========================================================================
    STORIA — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.11-16';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.11-17';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_BASE='aoCompass_v1';
 const LS_SCOPE_KEY='aoCompass_scope';
 /* ログイン中のデータは、アカウントごとの引き出しに入れます。
@@ -860,7 +860,8 @@ function openBillingSheet(reason){
     [['🤖 本格的なAIが使える（設定は不要）','あなたの活動履歴・自己分析まで踏まえて、志望理由書のどこをどう直すかを具体的に指摘します。1日5回・期間中250回まで。'],
      ['🔎 大学の候補を出してもらえる','書いた言葉から、向いていそうな大学・学部の候補と、確認すべきことを挙げます。'],
      ['🌱 じっくり育成プラン／🔥 直前詰め込みプラン','1年以上前から / 締切6週間前から。あなたの時期に合わせて日割りにします。'],
-     ['📅 2027年3月31日まで使える','受験が終わるまで。一般入試に回っても使い続けられます。']].forEach(([t,d])=>{
+     ['📅 2027年3月31日まで使える','受験が終わるまで。一般入試に回っても使い続けられます。'],
+     ['ℹ️ 回数について','AIは1日5回・期間中250回までです。指摘をもらう→自分で書き直す→また見てもらう、の順が一番伸びるためです。内蔵チェックは回数無制限で使えます。']].forEach(([t,d])=>{
       const r=el('div'); r.style.margin='8px 0 0'; r.innerHTML='<div class="small" style="font-weight:700">'+esc(t)+'</div><div class="xsmall muted">'+esc(d)+'</div>'; pc.appendChild(r);
     });
     b.appendChild(pc);
@@ -4387,18 +4388,63 @@ async function refreshQuota(){
   }catch(e){ return AI_QUOTA; }
 }
 /* 「今日あと3回」の帯。残りが見えると無駄打ちが減ります */
+/* なぜ1日5回なのかの説明。黙って断ると不満になるので、理由を出します。 */
+function whyLimitSheet(){
+  openSheet('AIの回数について',(b,close)=>{
+    b.appendChild(el('div','note info','<b>1日5回・受験期間中250回まで</b>にしています。理由は2つあります。'));
+
+    const c1=el('div','card tight');
+    c1.innerHTML='<div class="small"><b>① そのほうが、文章がよくなるから</b></div>'
+      +'<div class="xsmall muted" style="margin-top:4px">AIの添削は、'
+      +'<b>①指摘をもらう → ②自分で書き直す → ③もう一度見てもらう</b>、の順で効きます。<br>'
+      +'一晩に何十回も投げても、書き直す時間がないので力になりません。'
+      +'1回もらったら、まず自分の言葉で直してみてください。そのあとに見せたほうが、必ず良くなります。</div>';
+    b.appendChild(c1);
+
+    const c2=el('div','card tight'); c2.style.marginTop='8px';
+    c2.innerHTML='<div class="small"><b>② 本番まで、使い切らずに持たせるため</b></div>'
+      +'<div class="xsmall muted" style="margin-top:4px">'
+      +'いま全部使ってしまうと、出願直前の一番大事な時期に1回も使えなくなります。'
+      +'区切りがあることで、最後まで残ります。</div>';
+    b.appendChild(c2);
+
+    const c3=el('div','card tight'); c3.style.marginTop='8px';
+    c3.innerHTML='<div class="small"><b>回数を使わずにできること</b></div>'
+      +'<div class="xsmall muted" style="margin-top:4px">'
+      +'<b>内蔵チェックは回数無制限</b>です。文字数、抽象的な言葉、段落の役割、'
+      +'４つの問い（なぜその分野か／なぜこの大学か／何を学ぶか／どう生かすか）に答えられているか——'
+      +'ここまでは、いつでも何度でも確認できます。<br>'
+      +'AIを使うのは、<b>自分で直しきったあと</b>が一番効きます。</div>';
+    b.appendChild(c3);
+
+    b.appendChild(el('p','xsmall muted','※ 使った回数は毎日午前0時（日本時間）にリセットされます。'));
+    const cl=el('button','btn block','閉じる'); cl.onclick=close; b.appendChild(cl);
+  });
+}
 function quotaBar(){
   if(!aiReady()) return null;
   const d=el('div','note info'); d.style.marginBottom='8px';
+  const addWhy=(label)=>{
+    const w=el('button','btn ghost sm',label||'なぜ1日5回？');
+    w.style.marginTop='6px'; w.onclick=()=>whyLimitSheet(); d.appendChild(w);
+  };
   const paint=()=>{
     if(!AI_QUOTA){ d.innerHTML='残り回数を確認しています…'; return; }
     if(!AI_QUOTA.allowed){
       d.className='note';
-      d.innerHTML='⏳ '+esc(AI_QUOTA.reason||'いまは使えません')+'<br><span class="xsmall muted">内蔵チェックはいつでも使えます。</span>';
+      d.innerHTML='⏳ '+esc(AI_QUOTA.reason||'いまは使えません')
+        +'<br><span class="xsmall muted">内蔵チェックは回数無制限です。今日はそちらで直してみてください。'
+        +'一度自分で書き直してから見せたほうが、AIの指摘もよく効きます。</span>';
+      addWhy('なぜ回数があるの？');
       return;
     }
     d.innerHTML='🤖 <b>今日あと'+AI_QUOTA.left_today+'回</b>使えます'
       +' <span class="xsmall muted">（受験期間中の残り '+AI_QUOTA.left_total+'回）</span>';
+    if(AI_QUOTA.left_today<=2){
+      d.innerHTML+='<br><span class="xsmall muted">残りが少なくなってきました。'
+        +'一度自分で書き直してから使うと、同じ回数でも効きが変わります。</span>';
+    }
+    addWhy();
   };
   paint(); refreshQuota().then(paint);
   return d;
