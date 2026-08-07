@@ -533,7 +533,7 @@ a{color:var(--teal)}
 /* =========================================================================
    STORIA — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.07';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.07-2';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_BASE='aoCompass_v1';
 const LS_SCOPE_KEY='aoCompass_scope';
 /* ログイン中のデータは、アカウントごとの引き出しに入れます。
@@ -3385,7 +3385,7 @@ function vSettings(){
   const imp=el('button','btn ghost','読み込み'); imp.onclick=importData;
   const del=el('button','btn danger','すべてのデータを削除'); del.onclick=()=>confirmDelete('すべてのデータ（志望校・書類・自己分析など）を完全に削除します。取り消せません。',()=>{S=blankState();S.profile.onboarded=true;save();toast('削除しました','ok');go('home');});
   row.append(exp,imp,del); dc.appendChild(row);
-  dc.appendChild(el('p','xsmall muted','※ バックアップにはAIのAPIキーは含まれません（安全のため）。'));
+  dc.appendChild(el('p','xsmall muted','※ 書き出したファイルの名前には日付が入ります（例：ao-compass-backup-2026-08-07-0930.json）。「読み込み」は、いまのデータと読み込む中身を見比べる確認画面を出してから置きかえます。バックアップにAIのAPIキーは含まれません（安全のため）。'));
   w.appendChild(dc);
 
   w.appendChild(privacyNote());
@@ -3482,8 +3482,76 @@ function vMore(){
   const about=el('div','card tight'); about.innerHTML='<p class="xsmall muted">STORIA（試作版）｜総合型選抜の伴走アプリ。AIは合否を判断せず、あなたの経験や実績を捏造しません。最終的な提出内容は必ずご自身で確認し、先生・指導者にも確認してもらいましょう。デモの大学名・要項はすべて架空です。</p>'; w.appendChild(about);
   return w;
 }
-function exportData(){ const blob=new Blob([JSON.stringify(S,null,2)],{type:'application/json'}); const a=el('a'); a.href=URL.createObjectURL(blob); a.download='ao-compass-backup.json'; a.click(); toast('バックアップを書き出しました','ok'); }
-function importData(){ const inp=el('input'); inp.type='file'; inp.accept='.json'; inp.onchange=e=>{ const file=e.target.files[0]; if(!file)return; const rd=new FileReader(); rd.onload=()=>{ try{ S=migrate(JSON.parse(rd.result)); save(); toast('読み込みました','ok'); go('home'); }catch(err){ toast('ファイルを読み込めませんでした','err'); } }; rd.readAsText(file); }; inp.click(); }
+/* --- バックアップの書き出し・読み込み -----------------------------------
+   書き出し：ファイル名に日付を入れて「いつのバックアップか」が分かるようにします。
+   読み込み：いまのデータを丸ごと置きかえてしまい取り消せないので、
+             必ず中身を見せて、本人が確認してから実行します。
+   ※ AIのAPIキーは別の場所（AICFG_KEY）に保存されているので、バックアップには入りません。 */
+function backupStamp(d){ const p=n=>(n<10?'0':'')+n;
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'-'+p(d.getHours())+p(d.getMinutes()); }
+function exportData(){
+  try{ flushAutosave(); }catch(e){}
+  const now=new Date();
+  const data=Object.assign({},S,{_backupAt:now.toISOString(),_backupVer:APP_VER});
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob); const a=el('a');
+  a.href=url; a.download='ao-compass-backup-'+backupStamp(now)+'.json'; a.click();
+  setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch(e){} },4000);
+  toast('バックアップを書き出しました','ok');
+}
+/* このアプリのバックアップらしいJSONか（無関係なファイルで上書きさせないための門番） */
+function looksLikeBackup(x){
+  if(!x||typeof x!=='object'||Array.isArray(x)) return false;
+  const lists=['schools','documents','activities','tasks','interview','essays','feedback','certs'];
+  for(let i=0;i<lists.length;i++){ if(Array.isArray(x[lists[i]])) return true; }
+  return !!(x.profile&&typeof x.profile==='object')||!!(x.self&&typeof x.self==='object')||!!(x.story&&typeof x.story==='object');
+}
+/* 件数をかぞえて、読み込み前の見比べに使います */
+function backupSummary(x){ const c=k=>Array.isArray(x&&x[k])?x[k].length:0;
+  return {schools:c('schools'),documents:c('documents'),activities:c('activities'),tasks:c('tasks'),
+          name:String((x&&x.profile&&x.profile.name)||'').trim(),at:''}; }
+function importData(){
+  const inp=el('input'); inp.type='file'; inp.accept='.json,application/json';
+  inp.onchange=e=>{ const file=e.target.files[0]; if(!file)return;
+    const rd=new FileReader();
+    rd.onerror=()=>toast('ファイルを読み込めませんでした','err');
+    rd.onload=()=>{ let raw=null;
+      try{ raw=JSON.parse(rd.result); }catch(err){ toast('ファイルを読み込めませんでした','err'); return; }
+      if(!looksLikeBackup(raw)){ toast('このアプリのバックアップではないようです','err'); return; }
+      confirmImport(raw,file.name); };
+    rd.readAsText(file); };
+  inp.click();
+}
+/* 読み込みの確認シート（ここで「置きかえて読み込む」を押すまで、今のデータには触りません） */
+function confirmImport(raw,fname){
+  const next=migrate(raw);
+  const stampAt=(typeof raw._backupAt==='string')?raw._backupAt:'';
+  delete next._backupAt; delete next._backupVer;
+  const cur=backupSummary(S), nx=backupSummary(next); nx.at=stampAt;
+  const line=o=>'志望校 '+o.schools+'件 ／ 提出書類 '+o.documents+'件 ／ 活動 '+o.activities+'件 ／ タスク '+o.tasks+'件'
+    +(o.name?'<br>名前：'+esc(o.name):'')
+    +(o.at?'<br>書き出した日時：'+esc(fmtDT(Date.parse(o.at)||o.at)):'');
+  openSheet('バックアップの読み込み',(b,close)=>{
+    const empty=isEmptyState(S);
+    if(fname) b.appendChild(el('p','small muted','ファイル：'+esc(fname)));
+    const mk=(t,o)=>{ const c=el('div','card tight'); c.style.marginBottom='8px';
+      c.innerHTML='<div class="small" style="font-weight:800;color:var(--navy)">'+esc(t)+'</div>'
+        +'<p class="xsmall muted" style="margin:3px 0 0">'+line(o)+'</p>'; return c; };
+    b.appendChild(mk('いまこの端末に入っているデータ',cur));
+    b.appendChild(mk('読み込むファイルの中身',nx));
+    const nt=el('div','note'+(empty?' info':'')); nt.style.marginTop='2px';
+    nt.innerHTML=empty
+      ? '✅ いまは何も入っていないので、そのまま読み込んで大丈夫です。'
+      : '⚠️ <b>読み込むと、いまのデータはすべて置きかわります。</b>取り消せません。心配なときは、先に下のボタンで今のデータを書き出しておいてください。';
+    b.appendChild(nt);
+    if(!empty){ const bk=el('button','btn ghost sm block','💾 先に今のデータを書き出す'); bk.style.marginTop='8px'; bk.onclick=exportData; b.appendChild(bk); }
+    const row=el('div','btn-row'); row.style.marginTop='10px';
+    const cx=el('button','btn','キャンセル'); cx.onclick=close;
+    const okb=el('button','btn '+(empty?'primary':'danger'),empty?'読み込む':'置きかえて読み込む');
+    okb.onclick=()=>{ close(); S=next; save(); toast('読み込みました','ok'); go('home'); };
+    row.append(cx,okb); b.appendChild(row);
+  });
+}
 
 /* =========================================================================
    自己分析ワーク
