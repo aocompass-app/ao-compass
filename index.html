@@ -539,7 +539,7 @@ a{color:var(--teal)}
 /* =========================================================================
    STORIA — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.07-6';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.07-7';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_BASE='aoCompass_v1';
 const LS_SCOPE_KEY='aoCompass_scope';
 /* ログイン中のデータは、アカウントごとの引き出しに入れます。
@@ -3428,7 +3428,7 @@ function vSettings(){
   const imp=el('button','btn ghost','読み込み'); imp.onclick=importData;
   const del=el('button','btn danger','すべてのデータを削除'); del.onclick=()=>confirmDelete('すべてのデータ（志望校・書類・自己分析など）を完全に削除します。取り消せません。',()=>{S=blankState();S.profile.onboarded=true;save();toast('削除しました','ok');go('home');});
   row.append(exp,imp,del); dc.appendChild(row);
-  dc.appendChild(el('p','xsmall muted','※ バックアップに、鍵などの秘密の情報は含まれません（安全のため）。'));
+  dc.appendChild(el('p','xsmall muted','※ 書き出したファイルにAPIキーは含まれません（安全のため）。ファイル名には書き出した日時が入るので、いちばん新しいものがすぐ分かります。<br>※ 読み込みは、いまのデータとファイルの中身を見くらべる確認画面を出してから置きかえます。まちがえて全部消えることはありません。'));
   w.appendChild(dc);
 
   w.appendChild(privacyNote());
@@ -3512,8 +3512,87 @@ function vMore(){
   const about=el('div','card tight'); about.innerHTML='<p class="xsmall muted">STORIA（試作版）｜総合型選抜の伴走アプリ。AIは合否を判断せず、あなたの経験や実績を捏造しません。最終的な提出内容は必ずご自身で確認し、先生・指導者にも確認してもらいましょう。デモの大学名・要項はすべて架空です。</p>'; w.appendChild(about);
   return w;
 }
-function exportData(){ const blob=new Blob([JSON.stringify(S,null,2)],{type:'application/json'}); const a=el('a'); a.href=URL.createObjectURL(blob); a.download='ao-compass-backup.json'; a.click(); toast('バックアップを書き出しました','ok'); }
-function importData(){ const inp=el('input'); inp.type='file'; inp.accept='.json'; inp.onchange=e=>{ const file=e.target.files[0]; if(!file)return; const rd=new FileReader(); rd.onload=()=>{ try{ S=migrate(JSON.parse(rd.result)); save(); toast('読み込みました','ok'); go('home'); }catch(err){ toast('ファイルを読み込めませんでした','err'); } }; rd.readAsText(file); }; inp.click(); }
+/* ===== バックアップの書き出し・読み込み =====
+   読み込みは「いまの入力を全部すてて置きかえる」操作なので、必ず確認シートをはさみます。
+   APIキーは S ではなく別のキー（AICFG_KEY）に保存しているので、書き出しには入りません。 */
+function backupStamp(d){ const p=n=>(n<10?'0':'')+n;
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'-'+p(d.getHours())+p(d.getMinutes()); }
+function backupName(){ return 'ao-compass-backup-'+backupStamp(new Date())+'.json'; }
+/* 中身の件数を日本語にする（今のデータとファイルを見くらべるのに使います） */
+const BK_PARTS=[['schools','志望校'],['documents','書類'],['activities','活動実績'],['tasks','タスク'],['essays','小論文'],['certs','資格・検定'],['feedback','フィードバック'],['interview','面接メモ']];
+function backupCounts(o){
+  const out=[];
+  BK_PARTS.forEach(pr=>{ const v=o&&o[pr[0]]; if(Array.isArray(v)&&v.length) out.push(pr[1]+' '+v.length+'件'); });
+  const nm=o&&o.profile&&String(o.profile.name||'').trim(); if(nm) out.push('プロフィール（'+nm+'）');
+  return out.length?out.join('／'):'まだ何も入っていません';
+}
+function exportData(){
+  const payload=Object.assign({},S,{_backupAt:new Date().toISOString(),_backupVer:APP_VER});
+  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+  const a=el('a'); a.href=URL.createObjectURL(blob); a.download=backupName(); a.click();
+  toast('バックアップを書き出しました','ok');
+}
+/* STORIA のバックアップらしいか（関係ないJSONで上書きしてしまわないための確認） */
+function looksLikeBackup(o){
+  if(!o||typeof o!=='object'||Array.isArray(o)) return false;
+  const keys=['schools','documents','activities','tasks','essays','certs','feedback','interview','self','story','profile','prefs','meta'];
+  for(let i=0;i<keys.length;i++){ if(Object.prototype.hasOwnProperty.call(o,keys[i])) return true; }
+  return false;
+}
+function importData(){
+  const inp=el('input'); inp.type='file'; inp.accept='.json,application/json';
+  inp.onchange=e=>{
+    const file=e.target.files&&e.target.files[0]; if(!file) return;
+    const rd=new FileReader();
+    rd.onload=()=>{
+      let o=null;
+      try{ o=JSON.parse(rd.result); }catch(err){ toast('ファイルを読み込めませんでした','err'); return; }
+      if(!looksLikeBackup(o)){ toast('このファイルはSTORIAのバックアップではないようです','err'); return; }
+      confirmImport(o,file.name);
+    };
+    rd.onerror=()=>toast('ファイルを読み込めませんでした','err');
+    rd.readAsText(file);
+  };
+  inp.click();
+}
+/* 読み込みの確認シート。ここではまだ今のデータには一切さわりません。 */
+function confirmImport(obj,fname){
+  const hasNow=!isEmptyState(S);
+  let at='記録なし';
+  try{ if(obj&&obj._backupAt){ const d=new Date(obj._backupAt); if(!isNaN(d.getTime())) at=backupStamp(d).replace(/-(\d{2})(\d{2})$/,' $1:$2'); } }catch(e){}
+  openSheet('バックアップの読み込み',(b,close)=>{
+    b.appendChild(el('p','small muted','ファイル：'+esc(fname||'（名前なし）')));
+    const c1=el('div','card tight');
+    c1.innerHTML='<div class="small" style="font-weight:800;color:var(--navy)">いまこの端末に入っているデータ</div>'
+      +'<div class="xsmall muted" style="margin-top:3px">'+esc(backupCounts(S))+'</div>';
+    b.appendChild(c1);
+    const c2=el('div','card tight');
+    c2.innerHTML='<div class="small" style="font-weight:800;color:var(--navy)">読み込むファイルの中身</div>'
+      +'<div class="xsmall muted" style="margin-top:3px">'+esc(backupCounts(obj))+'</div>'
+      +'<div class="xsmall muted" style="margin-top:3px">書き出した日時：'+esc(at)
+      +(obj&&obj._backupVer?('　／　バージョン '+esc(String(obj._backupVer))):'')+'</div>';
+    b.appendChild(c2);
+    const nt=el('div','note '+(hasNow?'warn':'info'));
+    nt.innerHTML=hasNow
+      ? '⚠️ 読み込むと、いまこの端末に入っているデータはすべて消えて、ファイルの中身に<b>置きかわります</b>。あとから取り消せません。心配なときは、下の「先に今のデータを書き出す」でバックアップを取ってから進めてください。'
+      : 'いまはまだデータが入っていないので、<b>そのまま読み込んで大丈夫</b>です。';
+    b.appendChild(nt);
+    if(hasNow){
+      const pre=el('button','btn ghost block','先に今のデータを書き出す'); pre.style.marginTop='8px';
+      pre.onclick=()=>{ try{ exportData(); }catch(err){ toast('書き出せませんでした','err'); } };
+      b.appendChild(pre);
+    }
+    const row=el('div','btn-row'); row.style.marginTop='8px';
+    const c=el('button','btn','キャンセル'); c.onclick=close;
+    const go2=el('button','btn '+(hasNow?'danger':'primary'),hasNow?'置きかえて読み込む':'読み込む');
+    go2.onclick=()=>{
+      const src={};
+      Object.keys(obj).forEach(k=>{ if(k.charAt(0)!=='_') src[k]=obj[k]; });
+      close(); S=migrate(src); save(); toast('バックアップを読み込みました','ok'); go('home');
+    };
+    row.append(c,go2); b.appendChild(row);
+  });
+}
 
 /* =========================================================================
    自己分析ワーク
