@@ -539,7 +539,7 @@ a{color:var(--teal)}
 /* =========================================================================
    STORIA — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.11-21';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.07-6';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_BASE='aoCompass_v1';
 const LS_SCOPE_KEY='aoCompass_scope';
 /* ログイン中のデータは、アカウントごとの引き出しに入れます。
@@ -944,7 +944,17 @@ function setWide(on){
   try{ localStorage.setItem(WIDE_KEY,on?'1':'0'); }catch(e){}
   const sh=$('#sheet'); if(sh) sh.classList.toggle('wide',!!on);
 }
+/* シートが閉じるとき（✕・背景タップ・別のシートに置きかわるとき）の後始末。
+   書きかけの内容を保存したり、動いているタイマーを止めたりするのに使います。
+   soft=true はアプリを閉じかけているときで、登録は消さずに保存だけ走らせます。 */
+let _sheetClose=[];
+function onSheetClose(fn){ if(typeof fn==='function') _sheetClose.push(fn); }
+function runSheetClose(soft){
+  const a=_sheetClose; if(!soft) _sheetClose=[];
+  for(let i=0;i<a.length;i++){ try{ a[i](soft); }catch(e){} }
+}
 function openSheet(title, buildBody, opts={}){
+  runSheetClose();
   const ov=$('#overlay'), sh=$('#sheet');
   sh.innerHTML='';
   sh.classList.remove('wide');
@@ -970,7 +980,7 @@ function openSheet(title, buildBody, opts={}){
   ov.classList.add('open'); document.body.style.overflow='hidden';
   ov.onclick=e=>{ if(e.target===ov) closeSheet(); };
 }
-function closeSheet(){ const sh=$('#sheet'); if(sh) sh.classList.remove('wide'); $('#overlay').classList.remove('open'); document.body.style.overflow=''; }
+function closeSheet(){ runSheetClose(); const sh=$('#sheet'); if(sh) sh.classList.remove('wide'); $('#overlay').classList.remove('open'); document.body.style.overflow=''; }
 function confirmDelete(msg,cb){ openSheet('削除の確認',(b,close)=>{ b.appendChild(el('p','small muted',esc(msg))); const row=el('div','btn-row'); row.style.marginTop='8px'; const c=el('button','btn','キャンセル');c.onclick=close; const d=el('button','btn danger','削除する'); d.onclick=()=>{close();cb();}; row.append(c,d); b.appendChild(row); }); }
 
 /* ---------------- Form helper ---------------- */
@@ -2934,6 +2944,10 @@ function flushAutosave(){ Object.keys(_AS).forEach(k=>{ const e=_AS[k]; if(!e)re
 window.addEventListener('pagehide',flushAutosave);
 window.addEventListener('beforeunload',flushAutosave);
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') flushAutosave(); });
+/* シートを開いたままアプリを閉じた／別アプリに移ったときも、書きかけを取りこぼさない。
+   soft=true なので、戻ってきたときタイマーは動いたままです。 */
+window.addEventListener('pagehide',()=>{ try{ runSheetClose(true); }catch(e){} });
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden'){ try{ runSheetClose(true); }catch(e){} } });
 
 function openDocEditor(id,tab){
   const d=S.documents.find(x=>x.id===id); if(!d) return;
@@ -3098,7 +3112,9 @@ function vInterview(){
 function showQBank(){
   openSheet('📋 よくある質問',(b)=>{
     b.appendChild(el('p','small muted','タップして面接練習に追加できます。'));
-    COMMON_Q.forEach(q=>{ const exists=S.interview.some(x=>x.question===q); const c=el('div','list-row'); c.innerHTML=`<div style="flex:1" class="small">${esc(q)}</div>`; const btn=el('button','btn sm '+(exists?'ghost':''),exists?'追加済み':'＋追加'); if(!exists)btn.onclick=()=>{S.interview.push({id:uid(),question:q,category:'よくある質問',schoolId:null,answer:'',favorite:false,weak:false,selfEval:{},history:[]});save();toast('追加しました','ok');btn.textContent='追加済み';btn.classList.add('ghost');btn.onclick=null;}; c.appendChild(btn); b.appendChild(c); });
+    /* 追加した質問が、シートを閉じたあとの一覧にすぐ出るようにします */
+    let added=0; onSheetClose(()=>{ if(added){ try{ render(); }catch(e){} } });
+    COMMON_Q.forEach(q=>{ const exists=S.interview.some(x=>x.question===q); const c=el('div','list-row'); c.innerHTML=`<div style="flex:1" class="small">${esc(q)}</div>`; const btn=el('button','btn sm '+(exists?'ghost':''),exists?'追加済み':'＋追加'); if(!exists)btn.onclick=()=>{S.interview.push({id:uid(),question:q,category:'よくある質問',schoolId:null,answer:'',favorite:false,weak:false,selfEval:{},history:[]});save();added++;toast('追加しました','ok');btn.textContent='追加済み';btn.classList.add('ghost');btn.onclick=null;}; c.appendChild(btn); b.appendChild(c); });
   });
 }
 function editInterview(id){
@@ -3129,12 +3145,21 @@ function openInterview(id){
     // 回答
     const ans=fieldText('回答（メモ）',q.answer,'話す内容を書き出して整理しましょう',{area:true,rows:5}); b.appendChild(ans);
     b.appendChild(voiceTools(ans._input,{note:'🎤 話した内容をそのまま文字にできます。実際に声に出して答えてから、書き言葉に直すと自然な回答になります。🎧 は録音ファイルの文字起こし（GPT／互換APIのキーが必要）。'}));
+    b.appendChild(el('p','xsmall muted','✍️ 書いた回答は、この画面を閉じても自動で残ります（練習時間と改善メモは「練習を記録して保存」を押したときに記録されます）。'));
     // 自己評価
     b.appendChild(el('h4',null,'振り返り（自己評価）')); b.appendChild(el('p','xsmall muted','具体性・一貫性・簡潔さ・本人らしさの4観点で（1〜4）'));
     const evalWrap=el('div'); const axes=['具体性','一貫性','簡潔さ','本人らしさ']; q.selfEval=q.selfEval||{};
-    axes.forEach(ax=>{ const row=el('div'); row.style.cssText='display:flex;align-items:center;gap:8px;margin:5px 0'; row.appendChild(el('span','small',ax)); row.firstChild.style.width='84px'; const seg=el('div','seg'); [1,2,3,4].forEach(n=>{ const bt=el('button',null,String(n)); if(q.selfEval[ax]===n)bt.classList.add('on'); bt.onclick=()=>{q.selfEval[ax]=n;seg.querySelectorAll('button').forEach(x=>x.classList.remove('on'));bt.classList.add('on');}; seg.appendChild(bt); }); row.appendChild(seg); evalWrap.appendChild(row); });
+    axes.forEach(ax=>{ const row=el('div'); row.style.cssText='display:flex;align-items:center;gap:8px;margin:5px 0'; row.appendChild(el('span','small',ax)); row.firstChild.style.width='84px'; const seg=el('div','seg'); [1,2,3,4].forEach(n=>{ const bt=el('button',null,String(n)); if(q.selfEval[ax]===n)bt.classList.add('on'); bt.onclick=()=>{q.selfEval[ax]=n;seg.querySelectorAll('button').forEach(x=>x.classList.remove('on'));bt.classList.add('on');save();}; seg.appendChild(bt); }); row.appendChild(seg); evalWrap.appendChild(row); });
     b.appendChild(evalWrap);
     const note=fieldText('改善メモ','',null,{placeholder:'次に意識すること'}); b.appendChild(note);
+    /* 書きかけの回答を失わないための後始末。
+       ✕・背景タップで閉じたときだけでなく、「ふりかえる」で別のシートに移るときも
+       この画面は作り直されてしまうので、その時点の回答をそのまま残します。 */
+    onSheetClose(function(soft){
+      if(!soft){ clearInterval(timerH); timerH=null; }
+      const v=ans.get();
+      if(v!==(q.answer||'')){ q.answer=v; save(); try{ render(); }catch(e){} }
+    });
     // AIふりかえりヒント
     const aiBtn=el('button','btn sm teal block',aiReady()?('🤖 '+aiLabel()+'でふりかえる'):'🤖 内蔵チェックでふりかえる'); aiBtn.onclick=()=>{ if(aiReady()){ if(!ans.get()){toast('先に回答を書きましょう','warn');return;} aiTextSheet('🤖 回答のふりかえり','具体性・一貫性・簡潔さ・本人らしさの観点で'+esc(aiLabel())+'がふりかえります。',()=>runReflectAI(q.question,ans.get())); return; } openSheet('🤖 回答のふりかえり',(bb)=>{ bb.appendChild(el('div','note','AIは正解を与えません。次の観点で見直しましょう。')); const tips=[]; if(!hasNumbers(ans.get()))tips.push('具体的な数字・固有名詞を1つ入れると説得力が増します。'); if(!firstPerson(ans.get()))tips.push('「私は〇〇した」と、あなた自身の行動を主語にしましょう。'); if(detectAbstract(ans.get()).length>=2)tips.push('「'+detectAbstract(ans.get())[0]+'」など抽象語を、具体的な場面に置き換えましょう。'); if(countJP(ans.get())>250)tips.push('回答が長めです。結論を先に、30秒で言えるように削りましょう。'); if(!tips.length)tips.push('具体性・一貫性・簡潔さ・本人らしさのバランスが取れています。声に出して練習しましょう。'); const ul=el('ul');ul.style.paddingLeft='18px'; tips.forEach(t=>{const li=el('li','small');li.textContent=t;ul.appendChild(li);}); bb.appendChild(ul); }); };
     b.appendChild(aiBtn);
@@ -3691,11 +3716,42 @@ function openEssay(id){
     trow.append(st,sp,rs); timer.append(disp,trow); b.appendChild(timer);
     const struct=fieldText('構成メモ',e.structureNote,'序論・本論・結論など',{area:true,rows:2}); b.appendChild(struct);
     const bodyF=fieldText('本文',e.body,null,{area:true,rows:8}); b.appendChild(bodyF);
-    const cnt=el('div','counter'); const bta=bodyF.querySelector('textarea'); const upd=()=>{cnt.textContent=countJP(bta.value)+(cl.get()?'/'+cl.get():'')+'字';}; upd(); bta.addEventListener('input',upd); b.appendChild(cnt);
+    /* 字数は「多すぎ」も「少なすぎ」も評価に響くので、いまどちらなのかを色と言葉で出します。
+       「◯字以内」の指定では8割以上書くのが一般的な目安です。 */
+    const cnt=el('div','counter'); const bta=bodyF.querySelector('textarea');
+    const upd=()=>{
+      const n=countJP(bta.value), lim=Math.max(0,+cl.get()||0);
+      if(!lim){ cnt.textContent=n+'字'; cnt.style.color=''; cnt.style.fontWeight=''; return; }
+      const d=n-lim, eighty=Math.ceil(lim*0.8);
+      if(d>0){ cnt.textContent=n+'/'+lim+'字（'+d+'字オーバー）'; cnt.style.color='var(--alert)'; cnt.style.fontWeight='800'; }
+      else if(n>=eighty){ cnt.textContent=n+'/'+lim+'字（あと'+(-d)+'字書けます）'; cnt.style.color='var(--ok)'; cnt.style.fontWeight='800'; }
+      else { cnt.textContent=n+'/'+lim+'字（8割の'+eighty+'字まであと'+(eighty-n)+'字）'; cnt.style.color=''; cnt.style.fontWeight=''; }
+    };
+    upd(); bta.addEventListener('input',upd);
+    if(cl._input) cl._input.addEventListener('input',upd);   /* 目安を入れ直したらすぐ反映 */
+    b.appendChild(cnt);
+    b.appendChild(el('p','xsmall muted','※ 「◯字以内」の指定では8割以上、「◯字程度」なら前後1割が一般的な目安です。字数オーバーは減点や不受理になることがあります。実際の指定は必ず募集要項で確認してください。'));
     const comment=fieldText('添削コメント（自分／先生）',e.comment,null,{area:true,rows:2}); b.appendChild(comment);
     const aiBtn=el('button','btn sm teal block','🤖 評価観点でチェック'); aiBtn.onclick=()=>{ openSheet('🤖 小論文チェック',(bb)=>{ bb.appendChild(el('div','note','以下の観点で自己点検しましょう（AIは採点しません）。')); const t=bta.value; const points=[ ['問いを正しく理解しているか', theme.get()&&overlapWords(t,theme.get())], ['主張が明確か', /(と考える|べきだ|である|と主張|私は)/.test(t)], ['理由や具体例があるか', /(なぜなら|理由は|例えば|具体的に)/.test(t)||hasNumbers(t)], ['反対意見も考慮しているか', /(一方|しかし|確かに|という意見|反論|批判)/.test(t)], ['構成に一貫性があるか', /(まず|次に|最後に|結論|したがって|以上)/.test(t)], ['誤字・不自然な表現がないか（目視）', countJP(t)>0] ]; points.forEach(([lbl,ok])=>{ const row=el('div','list-row'); row.innerHTML=`<span style="flex:1" class="small">${esc(lbl)}</span>${ok?'<span class="badge ok">◯ 手がかりあり</span>':'<span class="badge warn">要確認</span>'}`; bb.appendChild(row); }); bb.appendChild(el('p','xsmall muted','※キーワードによる簡易判定です。最終判断はご自身で。')); }); };
     b.appendChild(aiBtn);
-    const sv=el('button','btn primary block','保存'); sv.style.marginTop='10px'; sv.onclick=()=>{ clearInterval(running); const obj=id?e:{id:uid(),createdAt:Date.now(),selfEval:{}}; Object.assign(obj,{theme:theme.get(),timeLimit:+tl.get()||0,charLimit:+cl.get()||0,structureNote:struct.get(),body:bodyF.get(),comment:comment.get()}); if(!id)S.essays.push(obj); close(); commit('保存しました'); };
+    b.appendChild(el('p','xsmall muted','✍️ 書いた内容は、この画面を閉じても自動で残ります。'));
+    /* 保存の中身。「保存」ボタンと、シートを閉じたときの自動保存で同じ処理を使います。
+       何度呼ばれても同じ結果になるので、答案が二重に増えることはありません。 */
+    function persist(){
+      const t=theme.get(), bd=bodyF.get(), st2=struct.get(), cm=comment.get();
+      if(!id && !(t||bd||st2||cm)) return false;      /* 何も書いていない新規は作りません */
+      e.theme=t; e.timeLimit=+tl.get()||0; e.charLimit=+cl.get()||0;
+      e.structureNote=st2; e.body=bd; e.comment=cm;
+      if(!e.id) e.id=uid(); if(!e.createdAt) e.createdAt=Date.now();
+      if(S.essays.indexOf(e)<0) S.essays.push(e);
+      save(); return true;
+    }
+    /* 制限時間つきで書いている途中にシートが閉じても（AIチェックを押したときも）本文を失わない */
+    onSheetClose(function(soft){
+      if(!soft){ clearInterval(running); running=null; }
+      if(persist()){ try{ render(); }catch(x){} }
+    });
+    const sv=el('button','btn primary block','保存'); sv.style.marginTop='10px'; sv.onclick=()=>{ clearInterval(running); running=null; persist(); close(); commit('保存しました'); };
     b.appendChild(sv);
     if(id){ const del=el('button','btn danger block','削除');del.style.marginTop='8px'; del.onclick=()=>{close();confirmDelete('この答案を削除しますか？',()=>{S.essays=S.essays.filter(x=>x.id!==id);commit('削除しました');});}; b.appendChild(del); }
   });
