@@ -539,7 +539,7 @@ a{color:var(--teal)}
 /* =========================================================================
    STORIA — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.07-7';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.07-8';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_BASE='aoCompass_v1';
 const LS_SCOPE_KEY='aoCompass_scope';
 /* ログイン中のデータは、アカウントごとの引き出しに入れます。
@@ -1481,6 +1481,30 @@ function schoolProgress(s){
   const cl=s.checklist||{}; const keys=['req','gpa','doc_ao','doc_katsu','eng','photo','web','fee','mail','mensetsu'];
   const done=keys.filter(k=>cl[k]).length; return Math.round(done/keys.length*100);
 }
+/* 出願が終わったあとに来る「試験日」「合格発表」も数える。
+   出願締切だけを見ていると、出したとたんに全部グレーになって、
+   いちばん不安な試験〜発表の時期にカウントダウンが消えてしまうため。 */
+function schoolNextDate(s){
+  if(!s) return null;
+  const cand=[['エントリー開始',s.entryStart],['出願締切',s.deadline],['試験',s.examDate],['合格発表',s.resultDate]];
+  let best=null;
+  for(let i=0;i<cand.length;i++){
+    const iso=cand[i][1]; if(!iso) continue;
+    const d=daysUntil(iso); if(d==null||d<0) continue;
+    if(!best||d<best.dd) best={label:cand[i][0],iso:iso,dd:d};
+  }
+  return best;
+}
+/* 志望校カードの日程バッジ。締切が残っていれば締切、過ぎていれば次に来る日程を出す。 */
+function schoolDateBadge(s){
+  const dd=daysUntil(s.deadline);
+  const cls=n=>n<=14?'alert':n<=30?'warn':'navy';
+  if(dd!=null&&dd>=0) return `<span class="badge ${cls(dd)}" title="出願締切 ${esc(fmtDate(s.deadline))}">締切まで${dd}日</span>`;
+  const nx=schoolNextDate(s);
+  if(nx) return (dd==null?'<span class="badge grey">締切未設定</span> ':'<span class="badge grey">締切済</span> ')
+    +`<span class="badge ${cls(nx.dd)}" title="${esc(nx.label)} ${esc(fmtDate(nx.iso))}">${esc(nx.label)}まで${nx.dd}日</span>`;
+  return dd==null?'<span class="badge grey">締切未設定</span>':'<span class="badge grey">締切済</span>';
+}
 function countdownBox(iso){
   const AD=alertDays();
   const dd=daysUntil(iso); const box=el('div','countdown '+(dd!=null&&dd<=AD?'urgent':dd!=null&&dd<=AD*2?'soon':''));
@@ -1693,10 +1717,32 @@ function vSchools(){
   const q=el('input','input'); q.placeholder='大学名・学部で検索'; q.value=vSchools._q||'';
   const sb=el('div','searchbar'); sb.appendChild(q); w.appendChild(sb);
   q.oninput=()=>{vSchools._q=q.value; renderList();};
+  /* 並び替え。志望順だけだと、第3志望の締切が5日後でもいちばん下に沈んでしまい、
+     「次に手を動かすのはどこか」が一覧から読み取れないため。
+     2校以上あるときだけ出す（1校の人には意味が無く、画面がうるさくなる）。 */
+  if(S.schools.length>=2){
+    const seg=el('div','seg'); seg.style.marginBottom='12px';
+    [['','志望順'],['date','日程が近い順']].forEach(([v,label])=>{
+      const btn=el('button',(vSchools._sort||'')===v?'on':'',label);
+      btn.onclick=()=>{ vSchools._sort=v;
+        [].forEach.call(seg.children,c=>c.classList.remove('on')); btn.classList.add('on');
+        renderList(); };
+      seg.appendChild(btn);
+    });
+    w.appendChild(seg);
+  }
   const listWrap=el('div'); w.appendChild(listWrap);
   function renderList(){
     listWrap.innerHTML='';
     let arr=S.schools.slice().sort((a,b)=>(a.priority||9)-(b.priority||9));
+    if(vSchools._sort==='date'){
+      /* 次に来る日程が近い順。日程が無い／全部終わった学校は、志望順のまま後ろへ回す。 */
+      arr=arr.map((s,i)=>{ const nx=schoolNextDate(s); return {s:s,i:i,dd:nx?nx.dd:null}; })
+        .sort((a,b)=>{ if(a.dd==null&&b.dd==null) return a.i-b.i;
+          if(a.dd==null) return 1; if(b.dd==null) return -1;
+          return a.dd!==b.dd?a.dd-b.dd:a.i-b.i; })
+        .map(x=>x.s);
+    }
     const kw=(vSchools._q||'').trim();
     if(kw) arr=arr.filter(s=>(s.name+s.faculty+s.dept).includes(kw));
     if(!arr.length){ listWrap.appendChild(emptyState('🎓','志望校がまだありません','「追加」から大学を登録すると、締切カウントダウンと出願チェックリストが使えます。',(()=>{const b=el('button','btn primary','志望校を登録');b.onclick=()=>editSchool(null);return b;})())); return; }
@@ -1706,8 +1752,8 @@ function vSchools(){
   return w;
 }
 function schoolCard(s){
-  const c=el('div','card'); const dd=daysUntil(s.deadline); const pr=schoolProgress(s);
-  const ddBadge=dd==null?'<span class="badge grey">締切未設定</span>':dd<0?'<span class="badge grey">締切済</span>':`<span class="badge ${dd<=14?'alert':dd<=30?'warn':'navy'}">締切まで${dd}日</span>`;
+  const c=el('div','card'); const pr=schoolProgress(s);
+  const ddBadge=schoolDateBadge(s);
   c.innerHTML=`<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
     <div><div style="font-weight:800">${esc(s.name)} ${priorityBadge(s.priority)}</div>
     <div class="small muted">${esc(s.faculty||'')} ${esc(s.dept||'')}</div>
@@ -1722,10 +1768,24 @@ function schoolCard(s){
 function openSchool(id){
   const s=S.schools.find(x=>x.id===id); if(!s) return;
   openSheet(s.name,(b)=>{
-    const dd=daysUntil(s.deadline);
+    /* 残り日数は締切だけでなく、試験日・合格発表にも出す。
+       出願が終わったあとに「次は何日後か」を確かめる場所がここしかないため。 */
+    const dleft=iso=>{ const n=daysUntil(iso); return (n!=null&&n>=0)?`（あと${n}日）`:''; };
     b.appendChild(el('div','note','⚠️ 以下は登録された情報です。出願前に大学公式サイトの最新要項・原本を必ず確認してください。'));
+    /* 締切と必要書類が空だと、逆算プランも書類チェックも黙って動かない。
+       空欄の行は表示ごと消えてしまい入れ忘れに気づけないので、ここで名指しする。 */
+    const miss=[];
+    if(!s.deadline&&!s.lastDeadline) miss.push('出願締切日');
+    if(!((Array.isArray(s.docList)&&s.docList.length)||String(s.docs||'').trim())) miss.push('必要書類');
+    if(miss.length){
+      const mn=el('div','note info'); mn.style.marginTop='8px';
+      mn.innerHTML='📝 <b>'+esc(miss.join('・'))+'</b> がまだ空です。要項を見て入れておくと、締切からの逆算プランと提出書類のチェックが動きます。';
+      const mb=el('button','btn sm','この志望校を編集'); mb.style.marginTop='8px';
+      mb.onclick=()=>{ closeSheet(); editSchool(s.id); };
+      mn.appendChild(mb); b.appendChild(mn);
+    }
     const meta=el('dl','kv'); meta.style.margin='12px 0';
-    const rows=[['学部・学科',`${s.faculty||'—'} ${s.dept||''}`],['入試方式',s.method],['募集人数',s.capacity],['出願資格',s.eligibility],['評定条件',s.gpa],['英語資格など',s.english],['エントリー開始',fmtDate(s.entryStart)],['出願締切',fmtDate(s.deadline)+(dd!=null&&dd>=0?`（あと${dd}日）`:'')],['試験日',fmtDate(s.examDate)],['合格発表',fmtDate(s.resultDate)],['必要書類',s.docs],['選考方法',s.selection],['求める人物像',s.ideal],['アドミッション・ポリシー',s.policy],['志望順位',s.priority?('第'+s.priority+'志望'):'—'],['公式サイト',s.url?`<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.url)}</a>`:'—'],['調査メモ',s.notes]];
+    const rows=[['学部・学科',`${s.faculty||'—'} ${s.dept||''}`],['入試方式',s.method],['募集人数',s.capacity],['出願資格',s.eligibility],['評定条件',s.gpa],['英語資格など',s.english],['エントリー開始',fmtDate(s.entryStart)+dleft(s.entryStart)],['出願締切',fmtDate(s.deadline)+dleft(s.deadline)],['試験日',fmtDate(s.examDate)+dleft(s.examDate)],['合格発表',fmtDate(s.resultDate)+dleft(s.resultDate)],['必要書類',s.docs],['選考方法',s.selection],['求める人物像',s.ideal],['アドミッション・ポリシー',s.policy],['志望順位',s.priority?('第'+s.priority+'志望'):'—'],['公式サイト',s.url?`<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.url)}</a>`:'—'],['調査メモ',s.notes]];
     rows.forEach(([k,v])=>{ if(v==null||v==='')return; const dt=el('dt',null,esc(k)); const ddd=el('dd');
       if(k==='必要書類'){ const _l=(Array.isArray(s.docList)&&s.docList.length)?s.docList:splitDocs(s.docs).map(t=>t.trim()).filter(Boolean); ddd.innerHTML=_l.length?('<ul class="doc-ul">'+_l.map(d=>'<li>'+esc(d)+'</li>').join('')+'</ul>'):esc(String(v)); }
       else ddd.innerHTML=(k==='公式サイト')?v:nl2br(v);
