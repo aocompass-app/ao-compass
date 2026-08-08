@@ -167,3 +167,81 @@ APP_VER: `2026.08.11-32` → `2026.08.08`
 - 編集タブの上部は ステータス／種別／志望校 の3つの select で埋まった。これ以上足すなら
   `tgCard` のたたみこみに寄せること（本文の入力欄が画面外に押し出されるとかえって使いにくい）。
 - `render()` はシート（`#overlay`）を作り直さないので、シートを開いたまま呼んでも安全（志望校変更で利用）。
+
+---
+
+## 2026-08-08 ／ 担当分野：提出書類（AO_HOUR=16 → 16%7=2）
+
+APP_VER: `2026.08.08-3` → `2026.08.08-4`
+
+### 事前の状態（baseline）
+今回は上書き事故なし。前回（提出書類）の `docMatchesLabel` / `shallowCopy` / `paintDocMeta` は生きており、
+`tests/doc-meta.mjs` は 37 PASS / 0 FAIL のままだった。一方 `onSheetClose`（面接・小論文の回）は **消えたまま**で、
+`interview-essay.mjs` `sheet-close.mjs` `backup.mjs` `backup-guard.mjs` は実行時エラーで落ちる。
+`school-dates` 9/6、`school-sort` 6/11 も赤。**担当外なので今回は触っていない**（変更前後で数値は同一＝後退なし）。
+
+### 出した5案
+1. `closeSheet()` が `flushAutosave()` を呼ばない。本文を打った直後（自動保存の700ms以内）に
+   「×」や背景タップで閉じると、最後に打った一文が消える。入力欄はシートごと DOM から外れるだけで
+   `blur` が確実には飛ばないため。`flushAutosave` は `pagehide` / `visibilitychange` にしか繋がっていなかった。
+2. タイトルと設問を `newDoc`（作成時）でしか入れられない。設問は募集要項を見て知るのが書き始めたあとで、
+   `paneAI` の `analyzeText(...,{question})` にそのまま渡っている＝AI分析の質に直結。
+   タイトルは `docMatchesLabel` の突き合わせに使われるため、**前回入れた案内
+   「種別かタイトルを書類名に合わせてください」が実行不能**という矛盾が残っていた。
+3. `paneAI` の `d.body=$('#overlay').querySelector('textarea')?.value||d.body` が「最初の textarea」頼み。
+   案2で設問の入力欄を足すと本文が設問の文字で上書きされる＝本文消失。しかも `renderPane` が
+   `pane.innerHTML=''` を先に実行するため、この行は**そもそも一度も発火していなかった**（テストで判明）。
+4. `vDocuments` の一覧に絞り込みが無い（更新順のフラット）。書類が増えると探せない。
+5. `docProgress` の best が本文の長い順（前回からの持ち越し）。
+
+### 入れた改善（1・2、および2の前提として必須の3）
+- **`closeSheet` の先頭で `flushAutosave()`**（`try/catch` 付き、1行）。
+  これで「×」「背景タップ」「シートの置きかわり」のどれで閉じても、待機中の自動保存が確定する。
+  `flushAutosave` は何度呼んでも同じ値を書くだけなので副作用なし。`deleteDoc` は
+  `S.documents` から外す → `save()` → `after()=closeSheet()` の順なので、
+  確定処理が走っても消した書類は復活しない（テスト済み）。
+- **`renderPane` でタブを切りかえる前に本文を確定**。`pane.innerHTML=''` の**前**に
+  `pane.querySelector('textarea[data-body]')` を読み、`d.body` と違えば `d.body`＋`updatedAt` を更新して `save()`、
+  そのあと `flushAutosave()`。案3の「効いていない安全網」を実際に効かせた。
+  空にした場合もそのとおり保存する（旧 `||d.body` は空にできなかった）。
+- **本文の textarea に `data-body="1"`**。`paneAI` の取得を `textarea[data-body]` の名指しに変更。
+  編集タブに入力欄が増えても本文以外を本文として拾わない。
+- **編集タブに「📝 タイトル・設問を直す」**（`tgCard`、`key:'doc.meta'`、既定は閉）。
+  申し送りどおり select を増やさず、たたみこみに寄せた（閉じた状態で 48px、本文の入力欄の位置は 631→679px）。
+  - タイトル：`input` で `#sheet .sheet-head h3` をその場で書き換え、`change`/`blur` で
+    `d.title` 確定 →`touchDoc` →`paintDocMeta()` →`render()`（一覧にも反映）。
+    空・空白だけのときは入力欄と見出しを元に戻して `toast('タイトルは空にできません','warn')`。
+  - 設問：`change`/`blur` で `d.question` 確定 →`touchDoc` →`paintQuestion()`。
+- **設問の枠を常設化**。従来は `if(d.question)` のときだけ生成していたため、あとから入れても
+  再描画するまで出てこなかった。枠は常に作り、`paintQuestion()` が `display` と中身を切り替える。
+  中身は従来どおり `nl2br`（= `esc` 込み）なのでタグは文字として出る。
+
+### 見送った案
+- **4（一覧の絞り込み）**：前回に続き持ち越し。`vDocuments` の並び順に触れるうえ、
+  今回すでに `closeSheet` という共有関数を触っているので、1回に重ねない。次回の第一候補。
+- **5（`docProgress` の best）**：前回と同じ理由（既存ユーザーの表示が変わる）で見送りを継続。
+
+### 検証
+- `node tests/smoke.mjs` … 15 PASS / 0 FAIL
+- `node tests/doc-title-question.mjs`（今回追加）… 39 PASS / 0 FAIL
+  設問の後付け・枠の出し入れ・改行・エスケープ・空に戻す、タイトルの後付け・見出しの追従・
+  localStorage への保存・空タイトルの拒否・一覧への反映、タイトルを必要書類名に合わせると
+  `docProgress` が none→wip・緊急タスク 2→1 件、本文の `data-body` 名指しと
+  「設問の入力欄が本文より前にある」状況の再現、AI分析タブへの切り替えで本文が壊れないこと、
+  打った直後の `closeSheet()` と背景タップでの保存、保存待ちが別の書類に持ち越されないこと、
+  設問もタイトルも無い古いデータ、タスク・新規書類・志望校シートの開閉。
+- `node tests/doc-meta.mjs` … 37 PASS / 0 FAIL（1件だけ、順番依存の判定を `data-body` 名指しの判定に書き換え。
+  守っている中身＝「paneAI が本文を拾える」は同じで、より強く確かめている）
+- 担当外：`home-dates` 19/0・`home-priority` 23/0・`home-strip` 17/0・`task-groups` 38/0・
+  `school-dates` 9/6・`school-sort` 6/11 …… **変更前と完全に同一**。
+- 390px 幅で `#sheet` の横スクロールなし（カードを開いた状態でも `scrollWidth === clientWidth === 390`）。
+- 後読み正規表現 0件・オブジェクトスプレッド 0件（コメント中の記述を除く）を確認。
+
+### 次回への申し送り（提出書類）
+- 残っている候補：一覧の絞り込み（案4）、`docProgress` の best の見直し（案5）。
+- **`closeSheet()` は今後すべての画面で `flushAutosave()` を通る。**
+  シートを閉じたあとに `S` を書き換える処理を足すときは、確定処理が先に走ることを前提にすること。
+- **本文の入力欄は `textarea[data-body]` で名指しする。**「最初の textarea」に頼るコードを新しく書かないこと。
+- `renderPane` は本文を確定してから `pane.innerHTML=''` する。この順番を入れ替えないこと。
+- 編集タブの縦の並びは 設問枠／ステータス／種別／志望校／たたみこみ（タイトル・設問）／本文。
+  これ以上足すなら、たたみこみの中に入れること。

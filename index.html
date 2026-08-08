@@ -565,7 +565,7 @@ a{color:var(--teal)}
 /* =========================================================================
    STORIA — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.08-3';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.08-4';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_BASE='aoCompass_v1';
 const LS_SCOPE_KEY='aoCompass_scope';
 /* ログイン中のデータは、アカウントごとの引き出しに入れます。
@@ -1062,7 +1062,10 @@ function openSheet(title, buildBody, opts={}){
   ov.classList.add('open'); document.body.style.overflow='hidden';
   ov.onclick=e=>{ if(e.target===ov) closeSheet(); };
 }
-function closeSheet(){ const sh=$('#sheet'); if(sh) sh.classList.remove('wide'); $('#overlay').classList.remove('open'); document.body.style.overflow=''; }
+/* 閉じる前に、待機中の自動保存をすべて確定させる。
+   入力欄はシートごと DOM から外れるだけで blur が飛ばない端末があり、
+   打った直後（自動保存の700ms以内）に「×」や背景タップで閉じると最後の一文が消えていた。 */
+function closeSheet(){ try{ flushAutosave(); }catch(e){} const sh=$('#sheet'); if(sh) sh.classList.remove('wide'); $('#overlay').classList.remove('open'); document.body.style.overflow=''; }
 function confirmDelete(msg,cb){ openSheet('削除の確認',(b,close)=>{ b.appendChild(el('p','small muted',esc(msg))); const row=el('div','btn-row'); row.style.marginTop='8px'; const c=el('button','btn','キャンセル');c.onclick=close; const d=el('button','btn danger','削除する'); d.onclick=()=>{close();cb();}; row.append(c,d); b.appendChild(row); }); }
 
 /* ---------------- Form helper ---------------- */
@@ -3137,11 +3140,19 @@ function openDocEditor(id,tab){
     tabs.forEach(([k,label])=>{ const bt=el('button',null,label); bt.onclick=()=>{seg.querySelectorAll('button').forEach(x=>x.classList.remove('on'));bt.classList.add('on');renderPane(k);}; seg.appendChild(bt); });
     b.appendChild(seg); b.appendChild(pane);
     function renderPane(k){
+      /* タブを切りかえると本文の入力欄ごと消えてしまうので、消す前に書きかけを確定させる。
+         （paneAI 側で拾おうとしても、そのときには pane が空になっていて間に合わない） */
+      const bt=pane.querySelector('textarea[data-body]');
+      if(bt&&bt.value!==(d.body||'')){ d.body=bt.value; d.updatedAt=Date.now(); save(); }
+      try{ flushAutosave(); }catch(e){}
       pane.innerHTML='';
       if(k==='edit') paneEdit(); else if(k==='ai') paneAI(); else if(k==='fb') paneFB(); else paneVer();
     }
     function paneEdit(){
-      if(d.question){ const qb=el('div','note info'); qb.innerHTML='<b>設問：</b>'+nl2br(d.question); pane.appendChild(qb); }
+      /* 設問はあとから入力されることがあるので、枠は always 用意して中身だけ差し替える */
+      const qb=el('div','note info'); pane.appendChild(qb);
+      function paintQuestion(){ qb.style.display=d.question?'':'none'; qb.innerHTML='<b>設問：</b>'+nl2br(d.question||''); }
+      paintQuestion();
       const stSel=fieldSelect('ステータス',d.status,['下書き','修正中','添削待ち','完成']); stSel.get=stSel.get; stSel.querySelector('select').onchange=e=>{d.status=e.target.value;touchDoc(d);}; pane.appendChild(stSel);
       pane.appendChild(el('p','xsmall muted','「完成」にするまで、逆算プランに「推敲する」予定が繰り返し入り続けます。書類は一度では仕上がらないので、少しずつ何度も直していきましょう。'));
       const tySel=fieldSelect('種別',d.type||'志望理由書',DOC_TYPES); tySel.querySelector('select').onchange=e=>{d.type=e.target.value;touchDoc(d);paintDocMeta();}; pane.appendChild(tySel);
@@ -3168,7 +3179,35 @@ function openDocEditor(id,tab){
           :('この書類は「'+esc(shortName(s.name))+'」の必要書類'+(labels.length?('（'+esc(labels.slice(0,4).join('・'))+(labels.length>4?' ほか':'')+'）'):'')+'のどれにも当てはまっていません。取り組み状況に入れるには、上の「種別」かタイトルを書類名に合わせてください。');
       }
       paintDocMeta();
-      const ta=el('textarea','input'); ta.rows=14; ta.value=d.body||''; ta.setAttribute('aria-label','本文'); ta.style.minHeight='240px'; pane.appendChild(ta);
+      /* タイトルと設問はこれまで作成時にしか入れられなかった。
+         設問は募集要項を見て知るのがたいてい書き始めたあとで、AI分析にもそのまま渡っている。
+         タイトルは必要書類との突き合わせ（docMatchesLabel）に使われるので、直せないと案内どおりに直せない。
+         本文の入力欄を画面外へ押し出さないよう、たたんだカードに入れる。 */
+      tgCard(pane,{icon:'📝',title:'タイトル・設問を直す',key:'doc.meta',open:false},function(mb){
+        const tiF=fieldText('書類タイトル',d.title,null,{placeholder:'例：〇〇大学 志望理由書 第2稿'});
+        const tiIn=tiF._input;
+        const head=function(){ return document.querySelector('#sheet .sheet-head h3'); };
+        tiIn.addEventListener('input',function(){ const h=head(); if(h) h.textContent=tiIn.value||d.title; });
+        const commitTitle=function(){
+          const v=tiIn.value.trim();
+          if(!v){ tiIn.value=d.title; const h=head(); if(h) h.textContent=d.title; toast('タイトルは空にできません','warn'); return; }
+          if(v===d.title) return;
+          d.title=v; touchDoc(d); paintDocMeta(); try{ render(); }catch(x){}
+        };
+        tiIn.addEventListener('change',commitTitle); tiIn.addEventListener('blur',commitTitle);
+        mb.appendChild(tiF);
+        mb.appendChild(el('p','xsmall muted','必要書類の名前（例：志望理由書）をタイトルか種別に入れておくと、「提出書類の取り組み状況」に結びつきます。'));
+        const qF=fieldText('設問（募集要項に書かれている問い）',d.question,null,{area:true,rows:3,placeholder:'例：あなたが学びたいことと、その理由を述べてください'});
+        const qIn=qF._input;
+        const commitQ=function(){
+          if(qIn.value===(d.question||'')) return;
+          d.question=qIn.value; touchDoc(d); paintQuestion();
+        };
+        qIn.addEventListener('change',commitQ); qIn.addEventListener('blur',commitQ);
+        mb.appendChild(qF);
+        mb.appendChild(el('p','xsmall muted','設問を入れておくと、AI分析が「問いに答えられているか」まで見ます。募集要項の原本どおりに写してください。'));
+      });
+      const ta=el('textarea','input'); ta.rows=14; ta.value=d.body||''; ta.setAttribute('aria-label','本文'); ta.setAttribute('data-body','1'); ta.style.minHeight='240px'; pane.appendChild(ta);
       /* 文字数の表示と、あとから直せる文字数制限 */
       const cntRow=el('div'); cntRow.style.cssText='display:flex;align-items:center;gap:8px;margin-top:4px';
       const cnt=el('div','counter'); cnt.style.flex='1'; cntRow.appendChild(cnt);
@@ -3206,7 +3245,11 @@ function openDocEditor(id,tab){
       const nb=fieldText('メモ（段落メモ・自分用）',d.notes,null,{area:true,rows:2}); nb.querySelector('textarea').onchange=e=>{d.notes=e.target.value;touchDoc(d);}; pane.appendChild(nb);
     }
     function paneAI(){
-      d.body=$('#overlay').querySelector('textarea')?.value||d.body; // 念のため最新
+      /* 本文は renderPane がタブを切りかえる前に確定させている。ここは念のためのもう一度。
+         入力欄は data-body で名指しする（「最初の textarea」だと、編集タブに設問やメモの
+         入力欄が増えたときに本文以外を本文として拾ってしまう）。 */
+      const _bta=$('#overlay').querySelector('textarea[data-body]');
+      if(_bta&&_bta.value) d.body=_bta.value;
       const school=S.schools.find(s=>s.id===d.schoolId);
       const a=analyzeText(d.body,{charLimit:d.charLimit,school,question:d.question,hasPolicy:!!(school&&school.policy),storyLinked:!!S.story.origin,docType:d.type});
       const aiCtx={charLimit:d.charLimit,school,question:d.question,hasPolicy:!!(school&&school.policy),docType:d.type,doc:d};
@@ -3580,6 +3623,7 @@ function maybeOnboard(){
    利用者には「前に開いたときより新しくなっていたら」だけ知らせます。 */
 const CHANGELOG=[
 /*NEWEST*/
+{v:'2026.08.08-4',d:'2026-08-08',t:'今回も「提出書類」のページを見直しました。バージョンは **2026.08.08-4** です。 今回いちばん大事な直しです。書類の本文は、打つのをやめて少ししてから自動で保存される仕組みでした。'},
 {v:'2026.08.08-3',d:'2026-08-08',t:'今回は「提出書類」のページを見直しました。バージョンは **2026.08.08** です。 これがいちばん大きな変更です。これまで書類の志望校は、新しく作るときにしか選べませんでした。'},
 {v:'2026.08.08-2',d:'2026-08-08',t:'今回は「提出書類」のページを見直しました。バージョンは **2026.08.08** です。 これがいちばん大きな変更です。これまで書類の志望校は、新しく作るときにしか選べませんでした。'},
 {v:'2026.08.08',d:'2026-08-08',t:'今回は「提出書類」のページを見直しました。バージョンは **2026.08.08** です。 これがいちばん大きな変更です。これまで書類の志望校は、新しく作るときにしか選べませんでした。'},

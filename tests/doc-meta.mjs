@@ -209,15 +209,16 @@ const HELPERS = `
   await p.evaluate(HELPERS);
   await p.evaluate(() => openDocEditor('d4'));
   await p.waitForTimeout(300);
-  /* 本文の textarea は今もいちばん最初にあること（AI分析タブが本文を拾うため） */
+  /* 本文の textarea は data-body で名指しできること（AI分析タブが本文を拾うため）。
+     以前は「シート内の最初の textarea」に頼っていたが、設問の入力欄が増えたので目印で取る。 */
   const first = await p.evaluate(() => {
-    const ta = document.querySelector('#sheet textarea');
+    const ta = document.querySelector('#sheet textarea[data-body]');
     return ta ? ta.getAttribute('aria-label') : '';
   });
-  ok(first === '本文', `本文の入力欄が先頭のまま (${first})`);
+  ok(first === '本文', `本文の入力欄を data-body で特定できる (${first})`);
 
   await p.evaluate(() => {
-    const ta = document.querySelector('#sheet textarea'); ta.value = 'お'.repeat(50);
+    const ta = document.querySelector('#sheet textarea[data-body]'); ta.value = 'お'.repeat(50);
     [].slice.call(document.querySelectorAll('#sheet button')).filter(b => b.textContent.indexOf('複製') >= 0)[0].click();
   });
   await p.waitForTimeout(400);
