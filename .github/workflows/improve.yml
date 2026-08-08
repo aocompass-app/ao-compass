@@ -375,6 +375,55 @@ jobs:
             そのうえで `.claude/improve-state.json` を `{"mode":"daily"}` の内容に書き換えてください。
             毎時から1日1回に落ちます。頻度を上げ直すことはしないでください。
 
+      # 改善した内容を、アプリの中の「更新のお知らせ」に1件足す。
+      # これで利用者は、次に開いたときに「何が変わったか」を見られる。
+      - name: 更新のお知らせを書く
+        if: steps.gate.outputs.run == 'yes'
+        run: |
+          if cmp -s /tmp/before.html index.html; then echo "変更なし。お知らせは足しません。"; exit 0; fi
+          node - <<'AONEWSEOF'
+          const fs=require('fs');
+          const f='index.html';
+          let s=fs.readFileSync(f,'utf8');
+
+          // 1) 今回のバージョン
+          const mv=s.match(/APP_VER='([^']+)'/);
+          if(!mv){ console.log('APP_VER が見つからないので、お知らせは足しません'); process.exit(0); }
+          const ver=mv[1];
+
+          // 2) AIが書いた報告から、利用者向けの1文をつくる
+          let text='';
+          try{
+            const rep=fs.readFileSync('.claude/last-report.md','utf8');
+            const lines=rep.split('\n').map(x=>x.trim())
+              .filter(x=>x && !x.startsWith('#') && !x.startsWith('---') && !/^(見送|今回は見送)/.test(x));
+            text=lines.slice(0,2).map(x=>x.replace(/^[-*・\s]+/,'')).join(' ');
+          }catch(e){}
+          if(!text) text='使いやすさを少し改善しました。';
+          text=text.replace(/\s+/g,' ').slice(0,120);
+
+          // 3) 目印の直後に差し込む（すでに同じ版があれば何もしない）
+          const mark='/*NEWEST*/';
+          if(s.indexOf(mark)<0){ console.log('目印がないので、お知らせは足しません'); process.exit(0); }
+          if(s.indexOf("{v:'"+ver+"'")>=0){ console.log('この版のお知らせはすでにあります'); process.exit(0); }
+          const d=new Date().toISOString().slice(0,10);
+          const esc=x=>String(x).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+          const entry="\n{v:'"+esc(ver)+"',d:'"+d+"',t:'"+esc(text)+"'},";
+          s=s.replace(mark, mark+entry);
+
+          // 4) 古いお知らせは30件までにする
+          const m2=s.match(/const CHANGELOG=\[([\s\S]*?)\n\];/);
+          if(m2){
+            const items=m2[1].split(/\},\s*\n/).filter(x=>x.indexOf("{v:'")>=0);
+            if(items.length>30){
+              const kept=items.slice(0,30).map(x=>x.replace(/,\s*$/,'').replace(/\}$/,'')+'}').join(',\n');
+              s=s.replace(m2[0], 'const CHANGELOG=[\n/*NEWEST*/\n'+kept+'\n];');
+            }
+          }
+          fs.writeFileSync(f,s);
+          console.log('お知らせを追加しました: '+ver+' / '+text);
+          AONEWSEOF
+
       # ここから先は人が書いた確認です。1つでも引っかかったら公開しません。
       - name: 安全確認
         if: steps.gate.outputs.run == 'yes'
