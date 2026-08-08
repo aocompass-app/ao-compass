@@ -70,7 +70,8 @@ a{color:var(--teal)}
 .card.tight{padding:13px}
 .card h3{font-size:15px}
 .card-title{display:flex;align-items:center;gap:8px;margin-bottom:10px}
-.card-title .ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--surface-2);flex:none;font-size:16px}
+.card-title .ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--surface-2);flex:none;font-size:16px;color:var(--navy)}
+.ic svg{display:block}
 .muted{color:var(--ink-2)}
 .small{font-size:12.5px}
 .xsmall{font-size:11.5px}
@@ -426,7 +427,7 @@ a{color:var(--teal)}
 @media(min-width:620px){.sheet{border-radius:26px}}
 /* お知らせのベル（右上、プロフィールの左） */
 .bell-btn{position:relative;width:38px;height:38px;border-radius:99px;border:1px solid var(--line);
-  background:var(--surface);font-size:18px;line-height:1;cursor:pointer;margin-right:8px;
+  background:var(--surface);color:var(--navy);line-height:1;cursor:pointer;margin-right:8px;
   display:flex;align-items:center;justify-content:center;padding:0;flex:none}
 .bell-btn:active{transform:scale(.94)}
 .bell-dot{position:absolute;top:-4px;right:-4px;min-width:19px;height:19px;padding:0 5px;
@@ -434,6 +435,8 @@ a{color:var(--teal)}
   display:flex;align-items:center;justify-content:center;border:2px solid var(--surface);
   line-height:1;font-variant-numeric:tabular-nums}
 .bell-btn.has .bell-dot{animation:bellpop .5s ease}
+.newtag{display:inline-block;background:#d2462f;color:#fff;font-size:10px;font-weight:800;
+  letter-spacing:.06em;padding:1px 6px;border-radius:4px;vertical-align:2px;margin-right:6px}
 @keyframes bellpop{0%{transform:scale(0)}60%{transform:scale(1.25)}100%{transform:scale(1)}}
 /* 書類エディターを広げるモード。パソコンでは大きく、スマホでは全画面に近づける */
 #sheet.wide{max-width:min(1400px,96vw);max-height:96vh}
@@ -525,7 +528,7 @@ a{color:var(--teal)}
       </div>
       <div class="spacer"></div>
       <button class="bell-btn" id="btnBell" type="button" aria-label="お知らせ" aria-haspopup="dialog">
-        <span aria-hidden="true">🔔</span><span class="bell-dot" id="bellDot" hidden></span>
+        <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4.2a5.4 5.4 0 0 1 5.4 5.4c0 4 1.4 5.4 1.4 5.4H5.2s1.4-1.4 1.4-5.4A5.4 5.4 0 0 1 12 4.2z"/><path d="M10.2 18.2a1.9 1.9 0 0 0 3.6 0"/></svg><span class="bell-dot" id="bellDot" hidden></span>
       </button>
       <button class="avatar-btn" id="btnProfile" type="button" aria-label="プロフィールとアカウント" aria-haspopup="dialog"></button>
     </div>
@@ -558,7 +561,7 @@ a{color:var(--teal)}
 /* =========================================================================
    STORIA — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.11-27';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.11-31';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_BASE='aoCompass_v1';
 const LS_SCOPE_KEY='aoCompass_scope';
 /* ログイン中のデータは、アカウントごとの引き出しに入れます。
@@ -704,6 +707,48 @@ async function cloudPush(){
   updateAuthBar();
 }
 function scheduleCloudPush(){ if(!sb||!sbUser) return; sbStatus='pending'; updateAuthBar(); clearTimeout(sbSyncTimer); sbSyncTimer=setTimeout(cloudPush,1500); }
+/* ---- 線画アイコン（白黒・currentColor）----
+   絵文字は端末によって色も形も変わり、安っぽく見えるので、
+   同じ太さの線で描いた自前のアイコンに統一しています。 */
+const ICO={
+ user:'<circle cx="12" cy="8" r="3.6"/><path d="M4.8 20c.6-3.6 3.6-5.6 7.2-5.6s6.6 2 7.2 5.6"/>',
+ cloud:'<path d="M7.2 18.5A4.2 4.2 0 0 1 7 10.1a5.6 5.6 0 0 1 10.7 1.3 3.6 3.6 0 0 1-.7 7.1z"/>',
+ spark:'<path d="M12 3.2l1.9 4.9 4.9 1.9-4.9 1.9L12 16.8l-1.9-4.9L5.2 10l4.9-1.9z"/><path d="M18.4 15.6l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>',
+ gauge:'<path d="M4 15.5a8 8 0 1 1 16 0"/><path d="M12 15.5l3.6-3.9"/><circle cx="12" cy="15.5" r="1.1"/>',
+ ticket:'<path d="M3.5 9.2V7.4a1 1 0 0 1 1-1h15a1 1 0 0 1 1 1v1.8a2.8 2.8 0 0 0 0 5.6v1.8a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1v-1.8a2.8 2.8 0 0 0 0-5.6z"/><path d="M9.6 6.4v11.2" stroke-dasharray="2 2.2"/>',
+ text:'<path d="M4.6 18.4L10 5.6h1.4l5.4 12.8"/><path d="M6.8 14.2h7.6"/><path d="M17.4 18.4h2.6"/>',
+ phone:'<rect x="7" y="3.2" width="10" height="17.6" rx="2.2"/><path d="M10.7 17.6h2.6"/>',
+ book:'<path d="M4.4 5.2h5.2c1.4 0 2.4.9 2.4 2.1v11c0-1-1-1.8-2.4-1.8H4.4z"/><path d="M19.6 5.2h-5.2c-1.4 0-2.4.9-2.4 2.1v11c0-1 1-1.8 2.4-1.8h5.2z"/>',
+ bellnew:'<path d="M12 4.2a5.4 5.4 0 0 1 5.4 5.4c0 4 1.4 5.4 1.4 5.4H5.2s1.4-1.4 1.4-5.4A5.4 5.4 0 0 1 12 4.2z"/><path d="M10.2 18.2a1.9 1.9 0 0 0 3.6 0"/>',
+ mail:'<rect x="3.4" y="5.6" width="17.2" height="12.8" rx="2"/><path d="M3.8 7.2L12 12.8l8.2-5.6"/>',
+ disk:'<path d="M4.6 5.2h11l4 4v9.6a1 1 0 0 1-1 1H4.6a1 1 0 0 1-1-1V6.2a1 1 0 0 1 1-1z"/><path d="M7.6 5.2v4.4h6.6V5.2"/><rect x="7.2" y="13" width="9.6" height="5.8"/>',
+ info:'<circle cx="12" cy="12" r="8.4"/><path d="M12 11v5.4"/><path d="M12 7.8v.1"/>',
+ key:'<circle cx="8" cy="12" r="3.4"/><path d="M11.4 12h8.2"/><path d="M17 12v3.2"/><path d="M19.6 12v2.2"/>',
+ flag:'<path d="M6 20V4.6"/><path d="M6 5.2h11l-2.2 3.4L17 12H6z"/>',
+ compass:'<circle cx="12" cy="12" r="8.4"/><path d="M15.2 8.8l-1.9 4.5-4.5 1.9 1.9-4.5z"/>',
+ target:'<circle cx="12" cy="12" r="8.4"/><circle cx="12" cy="12" r="4.4"/><circle cx="12" cy="12" r=".9"/>',
+ check:'<circle cx="12" cy="12" r="8.4"/><path d="M8.4 12.2l2.5 2.5 4.7-5"/>',
+ pen:'<path d="M15.4 4.8l3.8 3.8L9.4 18.4l-4.6.8.8-4.6z"/><path d="M14 6.2l3.8 3.8"/>',
+ mic:'<rect x="9.4" y="3.4" width="5.2" height="10" rx="2.6"/><path d="M6.2 11.4a5.8 5.8 0 0 0 11.6 0"/><path d="M12 17.2v3.4"/>',
+ cal:'<rect x="3.6" y="5.4" width="16.8" height="15" rx="2"/><path d="M3.6 10h16.8"/><path d="M8 3.4v3.6M16 3.4v3.6"/>',
+ gear:'<circle cx="12" cy="12" r="3"/><path d="M12 3.4v2.2M12 18.4v2.2M20.6 12h-2.2M5.6 12H3.4M18.1 5.9l-1.6 1.6M7.5 16.5l-1.6 1.6M18.1 18.1l-1.6-1.6M7.5 7.5L5.9 5.9"/>',
+ folder:'<path d="M3.6 7.4a1.6 1.6 0 0 1 1.6-1.6h4l2 2.2h7.2a1.6 1.6 0 0 1 1.6 1.6v8.4a1.6 1.6 0 0 1-1.6 1.6H5.2a1.6 1.6 0 0 1-1.6-1.6z"/>',
+ list:'<path d="M8.6 6.6h11M8.6 12h11M8.6 17.4h11"/><path d="M4.6 6.6h.1M4.6 12h.1M4.6 17.4h.1"/>',
+ pin:'<path d="M12 20.6s6-5.4 6-9.6a6 6 0 1 0-12 0c0 4.2 6 9.6 6 9.6z"/><circle cx="12" cy="11" r="2.2"/>',
+ warn:'<path d="M12 4.4l8.4 14.6H3.6z"/><path d="M12 10v3.8"/><path d="M12 16.4v.1"/>',
+ search:'<circle cx="10.8" cy="10.8" r="6.2"/><path d="M15.4 15.4l4.2 4.2"/>',
+ cap:'<path d="M12 5.2L21 9.4 12 13.6 3 9.4z"/><path d="M6.6 11.2v4.2c0 1.5 2.4 2.8 5.4 2.8s5.4-1.3 5.4-2.8v-4.2"/>',
+ bulb:'<path d="M9.2 16.4a5.4 5.4 0 1 1 5.6 0v1.8H9.2z"/><path d="M10 20.4h4"/>',
+ clip:'<path d="M17.6 10.2l-6.6 6.6a3.4 3.4 0 0 1-4.8-4.8l7.4-7.4a2.3 2.3 0 1 1 3.2 3.2l-7.3 7.3a1.1 1.1 0 0 1-1.6-1.6l6.6-6.6"/>',
+ chat:'<path d="M20.4 12.4c0 3.8-3.8 6.8-8.4 6.8-1 0-2-.2-2.9-.4L4.4 20.4l1.5-3.6c-1.2-1.2-1.9-2.7-1.9-4.4 0-3.8 3.8-6.8 8.4-6.8s8 3 8 6.8z"/>',
+ doc:'<path d="M6.2 3.6h7.2l4.4 4.4v12.4H6.2z"/><path d="M13.4 3.6V8h4.4"/><path d="M9 12.6h6M9 16h4"/>'
+};
+function ico(name,size){
+  const d=ICO[name]||ICO.info, sz=size||20;
+  return '<svg viewBox="0 0 24 24" width="'+sz+'" height="'+sz+'" fill="none" stroke="currentColor" '
+    +'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">'
+    +d+'</svg>';
+}
 const AV_GRADS=[['#4F7CFF','#8A5CF6'],['#F59E42','#EF4444'],['#111318','#4F7CFF'],['#22C55E','#12B6A8'],['#8A5CF6','#4F7CFF'],['#F5A742','#F5C542']];
 function gradOf(i){ i=(i|0); const g=AV_GRADS[((i%AV_GRADS.length)+AV_GRADS.length)%AV_GRADS.length]||AV_GRADS[0]; return 'linear-gradient(135deg,'+g[0]+','+g[1]+')'; }
 function avatarGrad(){ return gradOf((S.profile&&S.profile.avatarColor)|0); }
@@ -897,17 +942,21 @@ function openBillingSheet(reason){
       b.appendChild(n);
     }
     const free=el('div','card tight');
-    free.innerHTML='<div class="small" style="font-weight:800;color:var(--navy)">無料プラン</div><p class="xsmall muted" style="margin:4px 0 0">自己分析・志望校管理・書類作成・面接練習・小論文・フィードバックなど、アプリの基本機能はすべて無料で使えます。逆算プランは「🎯 総仕上げプラン（3〜4ヶ月）」が使えます。</p>';
+    free.innerHTML='<div class="small" style="font-weight:800;color:var(--navy)">無料プラン</div><p class="xsmall muted" style="margin:4px 0 0">自己分析・志望校管理・書類作成・面接練習・小論文・フィードバック・逆算プラン・内蔵チェックなど、アプリの基本機能はすべて無料で使えます。回数の制限もありません。</p>';
     b.appendChild(free);
     const pc=el('div','card');
-    pc.innerHTML='<div class="card-title"><span class="ic">✨</span><h3>受験生パック でできること</h3></div>';
-    [['🤖 本格的なAIが使える（設定は不要）','あなたの活動履歴・自己分析まで踏まえて、志望理由書のどこをどう直すかを具体的に指摘します。1日5回・期間中250回まで。'],
-     ['🔎 大学の候補を出してもらえる','書いた言葉から、向いていそうな大学・学部の候補と、確認すべきことを挙げます。'],
-     ['🗣 面接で突っ込まれる点を先に出す','提出書類の内容から、面接官が確認しそうな質問を作ります。'],
-     ['🔄 AIによるプランの組み直し','いまの進み具合をAIが読んで、出願までの日割りを組み替えます。'],
-     ['📅 今年度いっぱい使える','購入した年度の3月31日まで（'+nendoLabel()+'に買えば '+nendoEndJP()+' まで）。受験が終わるまで、一般入試に回っても使い続けられます。'],
-     ['ℹ️ 回数について','AIは1日5回・期間中250回までです。指摘をもらう→自分で書き直す→また見てもらう、の順が一番伸びるためです。内蔵チェックは回数無制限で使えます。']].forEach(([t,d])=>{
-      const r=el('div'); r.style.margin='8px 0 0'; r.innerHTML='<div class="small" style="font-weight:700">'+esc(t)+'</div><div class="xsmall muted">'+esc(d)+'</div>'; pc.appendChild(r);
+    pc.innerHTML='<div class="card-title"><span class="ic">'+ico('spark')+'</span><h3>受験生パック でできること</h3></div>';
+    [['spark','本格的なAIが使える（設定は不要）','あなたの活動履歴・自己分析まで踏まえて、志望理由書のどこをどう直すかを具体的に指摘します。1日5回・期間中250回まで。'],
+     ['search','大学の候補を出してもらえる','書いた言葉から、向いていそうな大学・学部の候補と、確認すべきことを挙げます。'],
+     ['mic','面接で突っ込まれる点を先に出す','提出書類の内容から、面接官が確認しそうな質問を作ります。'],
+     ['target','AIによるプランの組み直し','いまの進み具合をAIが読んで、出願までの日割りを組み替えます。'],
+     ['cal','今年度いっぱい使える','購入した年度の3月31日まで（'+nendoLabel()+'に買えば '+nendoEndJP()+' まで）。受験が終わるまで、一般入試に回っても使い続けられます。'],
+     ['info','回数について','AIは1日5回・期間中250回までです。指摘をもらう→自分で書き直す→また見てもらう、の順が一番伸びるためです。内蔵チェックは回数無制限で使えます。']].forEach(([ic,t,d])=>{
+      const r=el('div'); r.style.cssText='display:flex;gap:9px;align-items:flex-start;margin:10px 0 0';
+      r.innerHTML='<span style="flex:none;color:var(--navy);margin-top:1px">'+ico(ic,18)+'</span>'
+        +'<span><span class="small" style="font-weight:700">'+esc(t)+'</span>'
+        +'<span class="xsmall muted" style="display:block">'+esc(d)+'</span></span>';
+      pc.appendChild(r);
     });
     b.appendChild(pc);
     PLAN_PRODUCTS.forEach(pr=>{
@@ -935,7 +984,7 @@ function openBillingSheet(reason){
     });
     b.appendChild(el('hr','sep'));
     const rc=el('div','card tight');
-    rc.innerHTML='<div class="card-title"><span class="ic">🔑</span><h3>アクセスコードで解除</h3></div><p class="xsmall muted">お支払い後に届いたコードを入力してください。ログインしたアカウントに紐づきます（別の端末でもそのまま使えます）。</p>';
+    rc.innerHTML='<div class="card-title"><span class="ic">'+ico('key')+'</span><h3>アクセスコードで解除</h3></div><p class="xsmall muted">お支払い後に届いたコードを入力してください。ログインしたアカウントに紐づきます（別の端末でもそのまま使えます）。</p>';
     const code=fieldText('アクセスコード','',null,{placeholder:'例：AOC-XXXX-XXXX'}); rc.appendChild(code);
     const msg=el('div','small'); msg.style.margin='4px 0'; rc.appendChild(msg);
     const go2=el('button','btn teal sm block','コードを登録する');
@@ -1542,7 +1591,7 @@ function startStepsCard(){
   const done=steps.filter(s=>s.ok).length;
   if(done>=steps.length) return null;
   const c=el('div','card');
-  c.innerHTML='<div class="card-title"><span class="ic">🚩</span><h3>はじめの3ステップ</h3></div>'
+  c.innerHTML='<div class="card-title"><span class="ic">'+ico('flag')+'</span><h3>はじめの3ステップ</h3></div>'
     +'<p class="small muted">上から順にやれば大丈夫です。いま '+done+' / '+steps.length+' 完了。</p>';
   steps.forEach((s,i)=>{
     const r=el('div','card tight'); r.style.marginTop='8px';
@@ -1574,7 +1623,7 @@ function vHome(){
     const _n0=(S.profile&&S.profile.name||'').trim();
     w.appendChild(pageHead(_n0&&S.prefs&&S.prefs.greet!==false?_n0+'さん、ようこそ':'ようこそ','総合型選抜の準備を、ここで一気通貫に'));
     const c=el('div','card');
-    c.innerHTML='<div class="card-title"><span class="ic">🧭</span><h3>STORIA へようこそ</h3></div><p class="small muted">何から始めればいいか分からなくて大丈夫です。<b>まず、これまでにやってきたことを書き出すところから</b>始めます。志望校が決まっていなくても進められます。</p>';
+    c.innerHTML='<div class="card-title"><span class="ic">'+ico('compass')+'</span><h3>STORIA へようこそ</h3></div><p class="small muted">何から始めればいいか分からなくて大丈夫です。<b>まず、これまでにやってきたことを書き出すところから</b>始めます。志望校が決まっていなくても進められます。</p>';
     const row=el('div','btn-row'); row.style.marginTop='10px';
     const b1=el('button','btn primary','① まず活動を書き出す'); b1.onclick=()=>go('portfolio');
     const b3=el('button','btn ghost','使い方を見る'); b3.onclick=()=>openWelcome(true);
@@ -1593,7 +1642,7 @@ function vHome(){
   // ヒーロー：第一志望＋カウントダウン
   const hero=el('div','card');
   if(primary){
-    hero.innerHTML=`<div class="card-title"><span class="ic">🎯</span><h3>第一志望</h3>${priorityBadge(primary.priority)}</div>
+    hero.innerHTML=`<div class="card-title"><span class="ic">${ico('target')}</span><h3>第一志望</h3>${priorityBadge(primary.priority)}</div>
       <div style="font-size:17px;font-weight:800;color:var(--navy)">${esc(primary.name)}</div>
       <div class="small muted">${esc(primary.faculty||'')} ${esc(primary.dept||'')}</div>
       <hr class="sep">`;
@@ -1627,7 +1676,7 @@ function vHome(){
   const grid=el('div','grid cols-2');
   // 今日/直近のタスク
   const tcard=el('div','card');
-  tcard.innerHTML='<div class="card-title"><span class="ic">✅</span><h3>直近のタスク</h3></div>';
+  tcard.innerHTML='<div class="card-title"><span class="ic">'+ico('check')+'</span><h3>直近のタスク</h3></div>';
   const upcoming=S.tasks.filter(t=>!t.done).sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999')).slice(0,5);
   if(!upcoming.length) tcard.appendChild(el('p','small muted','未完了のタスクはありません。'));
   upcoming.forEach(t=>{ tcard.appendChild(taskRow(t,true)); });
@@ -1637,14 +1686,14 @@ function vHome(){
   // 作成中の書類 & 次の面接
   const side=el('div');
   const dcard=el('div','card');
-  dcard.innerHTML='<div class="card-title"><span class="ic">📝</span><h3>作成中の書類</h3></div>';
+  dcard.innerHTML='<div class="card-title"><span class="ic">'+ico('pen')+'</span><h3>作成中の書類</h3></div>';
   const drafts=S.documents.filter(d=>d.status!=='完成').slice(0,3);
   if(!drafts.length) dcard.appendChild(el('p','small muted','作成中の書類はありません。'));
   drafts.forEach(d=>{ const r=el('div','list-row'); const len=countJP(d.body); r.innerHTML=`<div style="flex:1"><b class="small">${esc(d.title)}</b><div class="xsmall muted">${esc(schoolName(d.schoolId)||'—')} ・ ${len}${d.charLimit?'/'+d.charLimit:''}字 <span class="badge ${d.status==='完成'?'ok':'warn'}">${esc(d.status)}</span></div></div>`; const b=el('button','btn sm','開く'); b.onclick=()=>{go('documents');setTimeout(()=>openDocEditor(d.id),50);}; r.appendChild(b); dcard.appendChild(r); });
   side.appendChild(dcard);
 
   const icard=el('div','card');
-  icard.innerHTML='<div class="card-title"><span class="ic">🎤</span><h3>次の面接練習</h3></div>';
+  icard.innerHTML='<div class="card-title"><span class="ic">'+ico('mic')+'</span><h3>次の面接練習</h3></div>';
   const weakQ=S.interview.filter(q=>q.weak||!q.answer).slice(0,3);
   if(!weakQ.length) icard.appendChild(el('p','small muted','登録された質問はありません。'));
   weakQ.forEach(q=>{ const r=el('div','list-row'); r.innerHTML=`<div style="flex:1"><span class="small">${esc(q.question)}</span> ${q.weak?'<span class="badge alert">苦手</span>':'<span class="badge grey">未回答</span>'}</div>`; const b=el('button','btn sm','練習'); b.onclick=()=>{go('interview');setTimeout(()=>openInterview(q.id),50);}; r.appendChild(b); icard.appendChild(r); });
@@ -1664,7 +1713,7 @@ function homeTodayCard(){
   const doneN=todays.filter(t=>t.done).length;
   const overdue=S.tasks.filter(t=>!t.done&&t.due&&t.due<today);
   const _m=PLAN_MODES[planMode()];
-  c.innerHTML=`<div class="card-title"><span class="ic">📅</span><h3>今日やること</h3>${hasPlan()?`<span class="badge grey" title="${esc(_m.name)}（${esc(_m.sub)}）">${_m.icon} ${esc(_m.sub)}</span>`:''}${todays.length?`<span class="badge ${doneN===todays.length?'ok':'teal'}" data-tk="today">${doneN}/${todays.length} 完了</span>`:''}</div>`;
+  c.innerHTML=`<div class="card-title"><span class="ic">${ico('cal')}</span><h3>今日やること</h3>${hasPlan()?`<span class="badge grey" title="${esc(_m.name)}（${esc(_m.sub)}）">${_m.icon} ${esc(_m.sub)}</span>`:''}${todays.length?`<span class="badge ${doneN===todays.length?'ok':'teal'}" data-tk="today">${doneN}/${todays.length} 完了</span>`:''}</div>`;
   if(!hasPlan()&&!todays.length){
     c.appendChild(el('p','small muted','出願締切・書類の量・進み具合から、いつ何をやるかを自動で逆算してカレンダーに割り振ります。'));
     const mk=el('button','btn primary block','📅 逆算プランを作る'); mk.style.marginTop='8px'; mk.onclick=openPlanSheet; c.appendChild(mk);
@@ -3386,7 +3435,7 @@ function maybeOnboard(){
    利用者には「前に開いたときより新しくなっていたら」だけ知らせます。 */
 const CHANGELOG=[
 /*NEWEST*/
-{v:'2026.08.11-27',d:'2026-08-07',t:'お知らせを右上のベルにまとめ、未読の件数が出るようにしました。ホーム画面への追加方法を、iPhone・Android・パソコンすべて載せました。'},
+{v:'2026.08.11-31',d:'2026-08-07',t:'絵文字をやめて、線で描いたアイコンに統一しました。お知らせを右上のベルにまとめ、未読には NEW が付きます。'},
 {v:'2026.08.11-15',d:'2026-08-07',t:'APIキーの用意が不要になりました。受験生パックに加入すると、設定なしでAIが使えます。'},
 {v:'2026.08.11-13',d:'2026-08-07',t:'「大学をさがす」を追加しました。書いた言葉から近い分野を出します。'},
 {v:'2026.08.11-12',d:'2026-08-07',t:'書類を削除できるようにしました。ホームに「はじめの3ステップ」を追加しました。'}
@@ -3413,7 +3462,7 @@ function whatsNewCard(){
 function whatsNewCard_unused(){
   const list=newSince(); if(!list.length) return null;
   const c=el('div','card'); c.style.cssText='border-color:#bfdcc9;background:#f5fbf7;margin-bottom:12px';
-  c.innerHTML='<div class="card-title"><span class="ic">🆕</span><h3>アプリが新しくなりました</h3></div>';
+  c.innerHTML='<div class="card-title"><span class="ic">'+ico('bellnew')+'</span><h3>アプリが新しくなりました</h3></div>';
   list.slice(0,3).forEach(x=>{
     const r=el('p','small'); r.style.margin='6px 0 0';
     r.innerHTML='・'+esc(x.t);
@@ -3429,12 +3478,20 @@ function whatsNewCard_unused(){
   return c;
 }
 function sheetChangelog(){
-  openSheet('🆕 更新のお知らせ',(b)=>{
-    b.appendChild(el('p','small muted','アプリは少しずつ改善しています。直したところを新しい順に並べています。'));
+  /* 開いた瞬間に既読にするので、どれが未読だったかを先に控えておく */
+  const unread={}; newSince().forEach(x=>{ unread[x.v]=1; });
+  const n=Object.keys(unread).length;
+  openSheet('更新のお知らせ',(b)=>{
+    b.appendChild(el('p','small muted', n
+      ? ('前に見たときから '+n+' 件、新しくなっています。')
+      : 'アプリは少しずつ改善しています。直したところを新しい順に並べています。'));
     CHANGELOG.slice(0,30).forEach(x=>{
+      const isNew=!!unread[x.v];
       const r=el('div','card tight'); r.style.marginTop='8px';
+      if(isNew) r.style.cssText+=';border-color:#e8b8ae;background:#fffaf8';
       r.innerHTML='<div class="xsmall muted">'+esc(x.d||'')+'　v'+esc(x.v)+'</div>'
-        +'<div class="small" style="margin-top:2px">'+esc(x.t)+'</div>';
+        +'<div class="small" style="margin-top:3px">'
+        +(isNew?'<span class="newtag">NEW</span>':'')+esc(x.t)+'</div>';
       b.appendChild(r);
     });
     markSeen();
@@ -3447,7 +3504,7 @@ function setRow(icon,title,sub,badge,onOpen){
   const r=el('div','card'); r.style.cssText='padding:13px 15px;margin-bottom:8px;cursor:pointer';
   r.setAttribute('role','button'); r.setAttribute('tabindex','0');
   r.innerHTML='<div style="display:flex;align-items:center;gap:12px">'
-    +'<span style="font-size:21px;line-height:1;flex:none">'+icon+'</span>'
+    +'<span style="flex:none;width:34px;height:34px;border-radius:10px;background:var(--surface-2);color:var(--navy);display:grid;place-items:center">'+icon+'</span>'
     +'<div style="flex:1;min-width:0">'
       +'<div class="small" style="font-weight:700">'+esc(title)
       +(badge?' <span class="badge '+esc(badge[1]||'grey')+'">'+esc(badge[0])+'</span>':'')+'</div>'
@@ -3464,7 +3521,7 @@ function setGroup(title){ const h=el('div','small'); h.style.cssText='font-weigh
 
 /* ---- 各項目の中身 ---- */
 function sheetProfile(){
-  openSheet('👤 プロフィール',(b,close)=>{
+  openSheet('プロフィール',(b,close)=>{
     const P=S.profile||{};
     const F=profileFields(b,P);
     const gl=fieldText('将来やりたいこと（任意）',P.goal,'書類や面接の材料にもなります',{area:true,rows:3}); b.appendChild(gl);
@@ -3478,7 +3535,7 @@ function sheetProfile(){
   });
 }
 function sheetDisplay(){
-  openSheet('🔤 表示',(b,close)=>{
+  openSheet('表示',(b,close)=>{
     b.appendChild(el('p','small muted','文字の大きさ'));
     const row0=el('div','btn-row'); row0.style.marginTop='4px';
     TEXT_SIZES.forEach(([v,lb])=>{ const cur=((S.prefs&&S.prefs.textSize)||'m')===v;
@@ -3494,7 +3551,7 @@ function sheetDisplay(){
   });
 }
 function sheetHomeAdd(){
-  openSheet('📱 ホーム画面に追加する',(b,close)=>{
+  openSheet('ホーム画面に追加する',(b,close)=>{
     const ua=navigator.userAgent||'';
     const ios=/iPhone|iPad|iPod/.test(ua);
     const android=/Android/.test(ua);
@@ -3537,7 +3594,7 @@ function sheetHomeAdd(){
   });
 }
 function sheetData(){
-  openSheet('💾 データ',(b,close)=>{
+  openSheet('データ',(b,close)=>{
     b.appendChild(el('p','small muted','入力したデータは、このブラウザの中に保存されます。ログインしていれば、クラウドにも自動で保存されます。'));
     const row=el('div','btn-row'); row.style.marginTop='10px';
     const exp=el('button','btn','バックアップを書き出す'); exp.onclick=()=>{ exportData(); };
@@ -3558,7 +3615,7 @@ function sheetData(){
   });
 }
 function sheetContact(){
-  openSheet('✉️ お問い合わせ',(b,close)=>{
+  openSheet('お問い合わせ',(b,close)=>{
     b.appendChild(el('p','small muted','うまく動かない、コードが届かない、こうしてほしい——どれでも大丈夫です。1営業日以内にお返事します。'));
     const info='------------------------------\n'
       +'（この行より下は、原因を調べるための情報です。消さずに送ってください）\n'
@@ -3588,7 +3645,7 @@ function sheetContact(){
   });
 }
 function sheetAbout(){
-  openSheet('ℹ️ このアプリについて',(b,close)=>{
+  openSheet('このアプリについて',(b,close)=>{
     const vc=el('div','card tight');
     vc.innerHTML='<div class="small"><b>バージョン</b></div><p class="xsmall muted" style="margin:4px 0 8px">現在：<b>'+esc(APP_VER)+'</b><br>更新しても、入力したデータはこの端末に残ります。最新版が出ていないときは下を押してください。</p>';
     const rb=el('button','btn sm block','🔄 最新版を読み込み直す');
@@ -3599,7 +3656,7 @@ function sheetAbout(){
     lk.innerHTML='<div class="small"><b>きまり</b></div>';
     [['利用規約','terms.html'],['プライバシーポリシー','privacy.html'],['特定商取引法に基づく表記','tokusho.html']].forEach(([t,u])=>{
       const a=el('button','btn ghost sm block',t); a.style.marginTop='6px';
-      a.onclick=()=>window.open('https://storiaai.jp/'+u,'_blank','noopener');
+      a.onclick=()=>window.open(SITE_URL+u,'_blank','noopener');
       lk.appendChild(a);
     });
     b.appendChild(lk);
@@ -3619,45 +3676,45 @@ function vSettings(){
 
   /* --- あなたのこと --- */
   w.appendChild(setGroup('あなたのこと'));
-  w.appendChild(setRow('👤','プロフィール', nm?(nm+(P.grade?'／'+P.grade:'')):'名前・学年・高校・将来やりたいこと', nm?null:['未入力','grey'], sheetProfile));
+  w.appendChild(setRow(ico('user',22),'プロフィール', nm?(nm+(P.grade?'／'+P.grade:'')):'名前・学年・高校・将来やりたいこと', nm?null:['未入力','grey'], sheetProfile));
   if(cloudConfigured()){
-    w.appendChild(setRow('☁️','アカウント（クラウド保存）',
+    w.appendChild(setRow(ico('cloud',22),'アカウント（クラウド保存）',
       sbUser?sbUser.email:'別の端末でも続きから使えるようになります',
       sbUser?['ログイン中','ok']:['未ログイン','grey'], ()=>openAuthSheet()));
   }
 
   /* --- AI --- */
   w.appendChild(setGroup('AI'));
-  w.appendChild(setRow('✨','本格的なAI',
+  w.appendChild(setRow(ico('spark',22),'本格的なAI',
     aiReady()?(AI_QUOTA&&AI_QUOTA.allowed?('今日あと'+AI_QUOTA.left_today+'回使えます'):'ご加入中です')
              :'いまは内蔵チェック（無料・回数制限なし）で動いています',
     aiReady()?['利用中','ok']:['未加入','grey'], ()=>openAISettings()));
-  if(aiReady()) w.appendChild(setRow('📟','AIの残り回数','1日・期間中の残りを見る',null,()=>{
-    openSheet('📟 AIの残り回数',(b)=>{ b.appendChild(usageCard()); }); }));
+  if(aiReady()) w.appendChild(setRow(ico('gauge',22),'AIの残り回数','1日・期間中の残りを見る',null,()=>{
+    openSheet('AIの残り回数',(b)=>{ b.appendChild(usageCard()); }); }));
   if(BILLING.enabled){
-    w.appendChild(setRow('🎫','プラン / コードの登録', planName(), [planName(), isPro()?'ok':'grey'], ()=>openBillingSheet()));
+    w.appendChild(setRow(ico('ticket',22),'プラン / コードの登録', planName(), [planName(), isPro()?'ok':'grey'], ()=>openBillingSheet()));
   } else {
-    w.appendChild(setRow('🎫','アクセスコードを登録する','購入時に届いたコードを入れると開きます',null,()=>openBillingSheet()));
+    w.appendChild(setRow(ico('ticket',22),'アクセスコードを登録する','購入時に届いたコードを入れると開きます',null,()=>openBillingSheet()));
   }
 
   /* --- アプリ --- */
   w.appendChild(setGroup('アプリ'));
-  w.appendChild(setRow('🔤','表示','文字の大きさ／締切を赤くする日数',null,sheetDisplay));
+  w.appendChild(setRow(ico('text',22),'表示','文字の大きさ／締切を赤くする日数',null,sheetDisplay));
   { const inApp=(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||window.navigator.standalone===true;
-    w.appendChild(setRow('📱','ホーム画面に追加する',
+    w.appendChild(setRow(ico('phone',22),'ホーム画面に追加する',
       inApp?'追加済みです。アイコンから開けています':'アイコンから開けるようになります',
       inApp?['追加済み','ok']:null, sheetHomeAdd)); }
-  w.appendChild(setRow('📖','使い方をもう一度見る','はじめの案内を最初から',null,()=>openWelcome(true)));
+  w.appendChild(setRow(ico('book',22),'使い方をもう一度見る','はじめの案内を最初から',null,()=>openWelcome(true)));
   { const n=newSince().length;
-    w.appendChild(setRow('🆕','更新のお知らせ',
+    w.appendChild(setRow(ico('bellnew',22),'更新のお知らせ',
       '直したところの一覧（最終更新 '+((CHANGELOG[0]&&CHANGELOG[0].d)||'')+'）',
       n?[n+'件の新着','ok']:null, sheetChangelog)); }
 
   /* --- 困ったとき --- */
   w.appendChild(setGroup('困ったとき'));
-  w.appendChild(setRow('✉️','お問い合わせ','support@storiaai.jp に送れます',null,sheetContact));
-  w.appendChild(setRow('💾','データ','バックアップ／読み込み／削除',null,sheetData));
-  w.appendChild(setRow('ℹ️','このアプリについて','バージョン '+APP_VER+'／利用規約',null,sheetAbout));
+  w.appendChild(setRow(ico('mail',22),'お問い合わせ','support@storiaai.jp に送れます',null,sheetContact));
+  w.appendChild(setRow(ico('disk',22),'データ','バックアップ／読み込み／削除',null,sheetData));
+  w.appendChild(setRow(ico('info',22),'このアプリについて','バージョン '+APP_VER+'／利用規約',null,sheetAbout));
 
   w.appendChild(privacyNote());
   return w;
@@ -3666,7 +3723,7 @@ function vSettings(){
 /* 使用量カード（設定の中に置きます） */
 function usageCard(){
   const c=el('div','card');
-  c.innerHTML='<div class="card-title"><span class="ic">📟</span><h3>AIの残り回数</h3></div>';
+  c.innerHTML='<div class="card-title"><span class="ic">'+ico('gauge')+'</span><h3>AIの残り回数</h3></div>';
   if(!aiReady()){
     c.appendChild(el('p','small muted','受験生パックにご加入いただくと、本格的なAIが1日5回・受験期間中250回までお使いいただけます。内蔵チェックは回数制限なしでご利用いただけます。'));
     return c;
@@ -3707,10 +3764,10 @@ function vMore(){
   w.appendChild(grid);
   w.appendChild(el('hr','sep'));
   // 設定へ
-  const sc=el('div','card'); sc.innerHTML='<div class="card-title"><span class="ic">⚙️</span><h3>設定</h3></div><p class="small muted">プロフィール、文字の大きさ、AI接続、使用量、アカウント、データの書き出しや削除はこちらにまとめました。</p>';
+  const sc=el('div','card'); sc.innerHTML='<div class="card-title"><span class="ic">'+ico('gear')+'</span><h3>設定</h3></div><p class="small muted">プロフィール、文字の大きさ、AI接続、使用量、アカウント、データの書き出しや削除はこちらにまとめました。</p>';
   const sbn=el('button','btn primary sm block','⚙️ 設定を開く'); sbn.style.marginTop='8px'; sbn.onclick=()=>go('settings'); sc.appendChild(sbn); w.appendChild(sc);
   if(false){
-    const ac2=el('div','card'); ac2.innerHTML='<div class="card-title"><span class="ic">☁️</span><h3>アカウント（クラウド保存）</h3></div>';
+    const ac2=el('div','card'); ac2.innerHTML='<div class="card-title"><span class="ic">'+ico('cloud')+'</span><h3>アカウント（クラウド保存）</h3></div>';
     if(sbUser) ac2.appendChild(el('p','small muted','ログイン中：'+esc(sbUser.email)+'。入力データは自動でクラウド保存され、別の端末でも同じログインで続きから使えます。'));
     else ac2.appendChild(el('p','small muted','メールとパスワードでアカウントを作ると、データがクラウドに保存され、スマホでもPCでも同じログインで続きから使えます。'));
     const ab=el('button','btn '+(sbUser?'':'teal')+' sm',sbUser?'アカウント設定 / ログアウト':'ログイン / 新規登録'); ab.style.marginTop='8px'; ab.onclick=()=>openAuthSheet(); ac2.appendChild(ab); w.appendChild(ac2);
@@ -3718,7 +3775,7 @@ function vMore(){
   }
   // 料金プラン
   if(false&&BILLING.enabled){
-    const bc=el('div','card'); bc.innerHTML='<div class="card-title"><span class="ic">✨</span><h3>プラン</h3><span class="badge '+(isPro()?'ok':'grey')+'">'+esc(planName())+'</span></div>';
+    const bc=el('div','card'); bc.innerHTML='<div class="card-title"><span class="ic">'+ico('spark')+'</span><h3>プラン</h3><span class="badge '+(isPro()?'ok':'grey')+'">'+esc(planName())+'</span></div>';
     bc.appendChild(el('p','small muted',isPro()?('プラスをご利用中です。逆算プランの3種類（じっくり育成／総仕上げ／直前詰め込み）をすべて使えます。'+(ENT.until?'有効期限：'+fmtDate(ENT.until):'')):'無料プランでは「🎯 総仕上げプラン（3〜4ヶ月）」が使えます。「🌱 じっくり育成プラン（1年以上前から）」「🔥 直前詰め込みプラン」はプラスの機能です。'));
     const bb=el('button','btn '+(isPro()?'':'teal')+' sm',isPro()?'プランの詳細を見る':'プラスを見る / コードを登録'); bb.style.marginTop='8px'; bb.onclick=()=>openBillingSheet(); bc.appendChild(bb); w.appendChild(bc);
     w.appendChild(el('hr','sep'));
@@ -3780,7 +3837,7 @@ function vSelf(){
   w.appendChild(el('p','xsmall muted','入力は自動で保存されます（少し手を止めた時・別の欄に移った時・タブを切り替えた時）。すぐ確定させたいときは「💾 保存する」を押してください。'));
   // 整理された結果
   w.appendChild(el('hr','sep'));
-  const sc=el('div','card'); sc.innerHTML='<div class="card-title"><span class="ic">🗂️</span><h3>整理された自分（タグ）</h3></div><p class="small muted">回答から見えてきた自分を、キーワードで整理しましょう。書類・面接・ストーリーで再利用できます。</p>';
+  const sc=el('div','card'); sc.innerHTML='<div class="card-title"><span class="ic">'+ico('folder')+'</span><h3>整理された自分（タグ）</h3></div><p class="small muted">回答から見えてきた自分を、キーワードで整理しましょう。書類・面接・ストーリーで再利用できます。</p>';
   SELF_TAGS.forEach(([k,label])=>{ sc.appendChild(tagEditor(label,S.self.tags[k]||(S.self.tags[k]=[]))); });
   w.appendChild(sc);
   const sug=el('button','btn sm teal block','🤖 回答からキーワード候補を出す'); sug.onclick=()=>suggestSelfTags(); w.appendChild(sug);
@@ -4401,7 +4458,7 @@ function docCheckCard(compact){
   const bad=rows.filter(r=>r.state==='none'||r.state==='empty');
   const wip=rows.filter(r=>r.state==='wip');
   const c=el('div','card');
-  c.innerHTML='<div class="card-title"><span class="ic">📋</span><h3>提出書類の取り組み状況</h3><span class="badge '+(bad.length?'alert':'ok')+'">'+(bad.length?'未着手 '+bad.length+'件':'全'+rows.length+'件 着手済み')+'</span></div>';
+  c.innerHTML='<div class="card-title"><span class="ic">'+ico('list')+'</span><h3>提出書類の取り組み状況</h3><span class="badge '+(bad.length?'alert':'ok')+'">'+(bad.length?'未着手 '+bad.length+'件':'全'+rows.length+'件 着手済み')+'</span></div>';
   c.appendChild(el('p','xsmall muted','志望校に登録した「必要書類」から自動で作っています。実際の提出物は必ず募集要項の原本で確認してください。'));
   const byS={}; const order=[];
   rows.forEach(r=>{ if(!byS[r.school.id]){byS[r.school.id]=[];order.push(r.school.id);} byS[r.school.id].push(r); });
@@ -4442,7 +4499,7 @@ function vTasks(){
   const open=S.tasks.filter(t=>!t.done).sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'));
   const done=S.tasks.filter(t=>t.done);
   if(!S.tasks.length){ w.appendChild(emptyState('✅','タスクがありません','「募集要項を確認」「志望理由書の初稿」「面接練習」など、やることを追加しましょう。志望校のチェックリストからも自動作成されます。',(()=>{const b=el('button','btn primary','タスクを追加');b.onclick=()=>editTask(null);return b;})())); return w; }
-  const oc=el('div','card'); oc.innerHTML='<div class="card-title"><span class="ic">📌</span><h3 data-tk="open">未完了（'+open.length+'）</h3></div>'; if(!open.length)oc.appendChild(el('p','small muted','未完了のタスクはありません。お疲れさまです！')); open.forEach(t=>oc.appendChild(taskRow(t,false))); w.appendChild(oc);
+  const oc=el('div','card'); oc.innerHTML='<div class="card-title"><span class="ic">'+ico('pin')+'</span><h3 data-tk="open">未完了（'+open.length+'）</h3></div>'; if(!open.length)oc.appendChild(el('p','small muted','未完了のタスクはありません。お疲れさまです！')); open.forEach(t=>oc.appendChild(taskRow(t,false))); w.appendChild(oc);
   if(done.length){ const dc=el('details','acc'); dc.innerHTML='<summary><span data-tk="done">完了済み（'+done.length+'）</span></summary>'; const body=el('div','acc-body'); done.forEach(t=>body.appendChild(taskRow(t,false))); dc.appendChild(body); w.appendChild(dc); }
   return w;
 }
@@ -4660,6 +4717,10 @@ function saveAICFG(){try{localStorage.setItem(AICFG_KEY,JSON.stringify(AICFG));}
    だけ置いてあり、この画面のどこにも入っていません。
    使えるのは「ログインしていて、プランに加入している人」だけです。 */
 const AI_ENDPOINT=SB_URL+'/functions/v1/ai-proxy';
+/* 販売ページ・利用規約などの置き場所。
+   独自ドメイン（storiaai.jp）の準備ができたら、ここ1行を
+   'https://storiaai.jp/' に書き換えるだけで全部のリンクが切り替わります。 */
+const SITE_URL='https://aocompass-app.github.io/ao-compass/lp/';
 let AI_QUOTA=null;   /* サーバーに聞いた残り回数 */
 
 /* 本当にパックを買っているか。BILLING.enabled とは無関係に判定します。
@@ -4726,7 +4787,7 @@ function whyLimitSheet(){
 function proCard(what){
   if(aiReady()) return null;
   const c=el('div','card'); c.style.cssText='border-color:#e0b45c;background:#fffdf6;margin-bottom:12px';
-  c.innerHTML='<div class="card-title"><span class="ic">✨</span><h3>本格的なAIを使う</h3>'
+  c.innerHTML='<div class="card-title"><span class="ic">'+ico('spark')+'</span><h3>本格的なAIを使う</h3>'
     +'<span class="badge" style="background:#fdf3e6;color:#a5701c;border-color:#ecdcc0">8/20まで 6,800円</span></div>'
     +'<p class="small muted" style="margin:4px 0 0">'+esc(what||'AIがあなたの活動履歴まで読んで、どこをどう直せばいいかを具体的に指摘します。')+'</p>';
   const b=el('button','btn primary sm block','くわしく見る / 申し込む');
@@ -4825,7 +4886,7 @@ function extractJSON(s){ if(!s) return null; const m=s.match(/\{[\s\S]*\}/); if(
   try{return JSON.parse(m[0]);}catch(e){ try{return JSON.parse(m[0].replace(/,\s*\}/g,'}').replace(/,\s*\]/g,']'));}catch(e2){return null;} } }
 
 function aiLoading(container,msg){ container.innerHTML=''; const d=el('div','empty'); d.innerHTML=`<div class="em">🤖</div><h4>${esc(msg||'AIが考えています…')}</h4><p class="small muted">数秒〜十数秒かかることがあります</p>`; d.appendChild(el('div','spinner')); container.appendChild(d); return d; }
-function aiError(container,e,retry){ const d=el('div','card'); d.innerHTML=`<div class="card-title"><span class="ic">⚠️</span><h3>AIに接続できませんでした</h3></div><p class="small">${esc(e.message||String(e))}</p>`; const row=el('div','btn-row');row.style.marginTop='8px'; const s=el('button','btn sm','AI設定を開く');s.onclick=()=>openAISettings(); row.appendChild(s); if(retry){const r=el('button','btn sm ghost','再試行');r.onclick=retry;row.appendChild(r);} d.appendChild(row); container.appendChild(d); }
+function aiError(container,e,retry){ const d=el('div','card'); d.innerHTML=`<div class="card-title"><span class="ic">${ico('warn')}</span><h3>AIに接続できませんでした</h3></div><p class="small">${esc(e.message||String(e))}</p>`; const row=el('div','btn-row');row.style.marginTop='8px'; const s=el('button','btn sm','AI設定を開く');s.onclick=()=>openAISettings(); row.appendChild(s); if(retry){const r=el('button','btn sm ghost','再試行');r.onclick=retry;row.appendChild(r);} d.appendChild(row); container.appendChild(d); }
 /* AIの自由記述テキストを簡易マークダウンで表示 */
 function renderAIText(container,text){
   const lines=(text||'').split('\n'); let ul=null;
@@ -5013,7 +5074,7 @@ function addSuggestedSchool(p){
 }
 function openSchoolFinder(){
   const g=guessFields();
-  openSheet('🔎 大学をさがす',(b)=>{
+  openSheet('大学をさがす',(b)=>{
     if(!g.fields.length){
       b.appendChild(el('div','note info','まだ材料が足りません。「活動実績」と「自己分析ワーク」にいくつか書き込むと、あなたの言葉から近い分野を出せます。'));
       const j1=el('button','btn primary block','活動実績を書く'); j1.onclick=()=>{ closeSheet(); go('portfolio'); }; b.appendChild(j1);
@@ -5050,7 +5111,7 @@ function openSchoolFinder(){
   });
 }
 function showSchoolSuggestions(fields){
-  openSheet('🎓 大学の候補',(b)=>{
+  openSheet('大学の候補',(b)=>{
     const host=el('div'); b.appendChild(host);
     aiLoading(host,'あなたの活動から候補を探しています…');
     runSchoolSuggestAI(fields).then(j=>{
@@ -5564,7 +5625,7 @@ function renderFindings(b,findings,doc,kb){
 function aiIdea(){
   const QS=['その活動を始めたきっかけは何ですか？','あなた自身は具体的に何をしましたか？','最も困ったことは何ですか？','どのような工夫をしましたか？','活動の前後で、あなたの中で何が変わりましたか？','その経験は、大学で学びたいこととどうつながりますか？','それを示す具体的な出来事や数字はありますか？'];
   const ans={};
-  openSheet('💡 アイデア相談',(b)=>{
+  openSheet('アイデア相談',(b)=>{
     b.appendChild(el('div','note info','AIはすぐに文章を作りません。まず質問に答えてください。答えから、使えそうな材料を整理します。'));
     { const bg=profileBrief(); const ps=[];
       if(bg.acts)ps.push('活動履歴 '+bg.acts+'件');
