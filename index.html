@@ -565,7 +565,7 @@ a{color:var(--teal)}
 /* =========================================================================
    STORIA — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.08-4';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.08-5';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_BASE='aoCompass_v1';
 const LS_SCOPE_KEY='aoCompass_scope';
 /* ログイン中のデータは、アカウントごとの引き出しに入れます。
@@ -3623,6 +3623,7 @@ function maybeOnboard(){
    利用者には「前に開いたときより新しくなっていたら」だけ知らせます。 */
 const CHANGELOG=[
 /*NEWEST*/
+{v:'2026.08.08-5',d:'2026-08-08',t:'今回見たのは「タスク・締切」の画面です。 タスクの編集画面で、締切日の欄のすぐ下に'},
 {v:'2026.08.08-4',d:'2026-08-08',t:'今回も「提出書類」のページを見直しました。バージョンは **2026.08.08-4** です。 今回いちばん大事な直しです。書類の本文は、打つのをやめて少ししてから自動で保存される仕組みでした。'},
 {v:'2026.08.08-3',d:'2026-08-08',t:'今回は「提出書類」のページを見直しました。バージョンは **2026.08.08** です。 これがいちばん大きな変更です。これまで書類の志望校は、新しく作るときにしか選べませんでした。'},
 {v:'2026.08.08-2',d:'2026-08-08',t:'今回は「提出書類」のページを見直しました。バージョンは **2026.08.08** です。 これがいちばん大きな変更です。これまで書類の志望校は、新しく作るときにしか選べませんでした。'},
@@ -4488,7 +4489,9 @@ function openDaySheet(iso){
     if(!ts.length){ b.appendChild(el('p','small muted','この日に予定はありません。')); }
     ts.forEach(t=>{ const c=el('div','card tight'); c.appendChild(taskRow(t,false)); if(t.why){ const w=el('p','xsmall muted','💡 '+t.why); w.style.margin='2px 0 0 30px'; c.appendChild(w);} b.appendChild(c); });
     const addb=el('button','btn sm block','＋ この日にタスクを追加'); addb.style.marginTop='8px';
-    addb.onclick=()=>{ closeSheet(); setTimeout(()=>{ editTask(null); setTimeout(()=>{ const inp=document.querySelector('#sheet input[type=date]'); if(inp)inp.value=iso; },80); },120); };
+    /* 日付は editTask に直接わたす。以前は開いたあと 80ms 後に input を探して代入していたので、
+       端末が遅いと日付が入らないまま「保存」できてしまった */
+    addb.onclick=()=>{ closeSheet(); setTimeout(()=>editTask(null,iso),120); };
     b.appendChild(addb);
   });
 }
@@ -4744,7 +4747,7 @@ function vTasks(){
     if(g!==gcur){ gcur=g; oc.appendChild(taskGroupHead(g,gcount[g],gfirst)); gfirst=false; }
     oc.appendChild(taskRow(t,false));
   });
-  if(gcount.over) oc.appendChild(el('p','xsmall muted','※ 期限を過ぎたタスクは消えません。日付を変えるか、終わったらチェックを付けてください。'));
+  if(gcount.over) oc.appendChild(el('p','xsmall muted','※ 期限を過ぎたタスクは消えません。終わっていればチェックを、まだなら「編集」を開いて〈今日〉〈明日〉を1タップで選び、日付を動かしてください。'));
   w.appendChild(oc);
   if(done.length){ const dc=el('details','acc'); dc.innerHTML='<summary><span data-tk="done">完了済み（'+done.length+'）</span></summary>'; const body=el('div','acc-body'); done.forEach(t=>body.appendChild(taskRow(t,false))); dc.appendChild(body); w.appendChild(dc); }
   return w;
@@ -4836,11 +4839,32 @@ function taskCalendar(){
   const uc=el('div','card tight'); uc.innerHTML='<h4>近い締切</h4>'; up.forEach(t=>uc.appendChild(taskRow(t,true))); if(!up.length)uc.appendChild(el('p','small muted','期限つきタスクはありません。')); wrap.appendChild(uc);
   return wrap;
 }
-function editTask(id){
+/* 締切日を、スマホの日付ピッカーを開かずに1タップで決められるようにする。
+   期限を過ぎたタスクは一覧から消えないので、「何日過ぎているか」もその場に出して
+   〈今日〉〈明日〉で動かせるようにしておく（編集→ピッカーの月送り、が要らなくなる） */
+const DUE_QUICK=[['今日',0],['明日',1],['3日後',3],['1週間後',7]];
+function editTask(id,presetDue){
   const t=id?S.tasks.find(x=>x.id===id):{};
   openSheet(id?'タスクを編集':'タスクを追加',(b,close)=>{
     const f={}; f.title=fieldText('タスク名 *',t.title,null,{placeholder:'例：志望理由書の初稿を作る'}); b.appendChild(f.title);
-    const r=el('div','row2'); f.due=fieldText('締切日',t.due,null,{type:'date'}); f.cat=fieldText('カテゴリー',t.category,'例：書類 / 面接'); r.append(f.due,f.cat); b.appendChild(r);
+    const r=el('div','row2'); f.due=fieldText('締切日',t.due||presetDue||'',null,{type:'date'}); f.cat=fieldText('カテゴリー',t.category,'例：書類 / 面接'); r.append(f.due,f.cat); b.appendChild(r);
+    const qr=el('div','btn-row'); qr.setAttribute('data-duequick','1'); qr.style.margin='-4px 0 8px';
+    const info=el('div','xsmall'); info.setAttribute('data-dueinfo','1'); info.style.margin='0 0 12px';
+    const dueInp=f.due._input;
+    const paintDue=()=>{
+      const v=dueInp.value, dd=daysUntil(v);
+      if(!v||dd==null){ info.innerHTML='<span class="muted">締切日を入れないと、一覧のいちばん下の「期限なし」に入ります。</span>'; return; }
+      const cls=dd<0?'alert':dd<=3?'warn':'grey';
+      const txt=dd<0?(-dd)+'日 過ぎています':dd===0?'今日が締切です':'あと'+dd+'日';
+      info.innerHTML=esc(fmtDate(v))+' <span class="badge '+cls+'">'+esc(txt)+'</span>';
+    };
+    DUE_QUICK.forEach(q=>{ const bt=el('button','btn sm ghost',q[0]); bt.setAttribute('data-due',q[1]);
+      bt.onclick=()=>{ dueInp.value=isoAdd(todayISO(),q[1]); paintDue(); }; qr.appendChild(bt); });
+    const clr=el('button','btn sm ghost','期限なし'); clr.setAttribute('data-due','');
+    clr.onclick=()=>{ dueInp.value=''; paintDue(); }; qr.appendChild(clr);
+    b.appendChild(qr); b.appendChild(info);
+    dueInp.addEventListener('input',paintDue); dueInp.addEventListener('change',paintDue);
+    paintDue();
     f.school=fieldSelect('関連する志望校',t.schoolId,[{value:'',label:'—'},...S.schools.map(s=>({value:s.id,label:s.name}))]); b.appendChild(f.school);
     const sv=el('button','btn primary','保存'); sv.onclick=()=>{ if(!f.title.get()){toast('タスク名を入力してください','warn');return;} if(id){t.title=f.title.get();t.due=f.due.get();t.category=f.cat.get();t.schoolId=f.school.get()||null;} else S.tasks.push({id:uid(),title:f.title.get(),due:f.due.get(),category:f.cat.get(),schoolId:f.school.get()||null,done:false}); close(); commit('保存しました'); }; b.appendChild(sv);
     if(id){ const del=el('button','btn danger','削除');del.style.marginLeft='6px'; del.onclick=()=>{close();confirmDelete('このタスクを削除しますか？',()=>{S.tasks=S.tasks.filter(x=>x.id!==id);commit('削除しました');});}; b.appendChild(del); }
