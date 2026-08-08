@@ -424,6 +424,17 @@ a{color:var(--teal)}
 .overlay{background:rgba(17,18,24,.42);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
 .sheet{border-radius:26px 26px 0 0;padding:20px 18px calc(22px + env(safe-area-inset-bottom));box-shadow:0 -20px 50px rgba(0,0,0,.16);animation:sup .42s var(--ease)}
 @media(min-width:620px){.sheet{border-radius:26px}}
+/* お知らせのベル（右上、プロフィールの左） */
+.bell-btn{position:relative;width:38px;height:38px;border-radius:99px;border:1px solid var(--line);
+  background:var(--surface);font-size:18px;line-height:1;cursor:pointer;margin-right:8px;
+  display:flex;align-items:center;justify-content:center;padding:0;flex:none}
+.bell-btn:active{transform:scale(.94)}
+.bell-dot{position:absolute;top:-4px;right:-4px;min-width:19px;height:19px;padding:0 5px;
+  border-radius:99px;background:#d2462f;color:#fff;font-size:11px;font-weight:800;
+  display:flex;align-items:center;justify-content:center;border:2px solid var(--surface);
+  line-height:1;font-variant-numeric:tabular-nums}
+.bell-btn.has .bell-dot{animation:bellpop .5s ease}
+@keyframes bellpop{0%{transform:scale(0)}60%{transform:scale(1.25)}100%{transform:scale(1)}}
 /* 書類エディターを広げるモード。パソコンでは大きく、スマホでは全画面に近づける */
 #sheet.wide{max-width:min(1400px,96vw);max-height:96vh}
 @media(min-width:620px){#sheet.wide{max-height:94vh}}
@@ -513,6 +524,9 @@ a{color:var(--teal)}
         <span class="brand-txt"><span class="wm">STORIA</span><small>自分の魅力を、伝わる物語に。</small></span>
       </div>
       <div class="spacer"></div>
+      <button class="bell-btn" id="btnBell" type="button" aria-label="お知らせ" aria-haspopup="dialog">
+        <span aria-hidden="true">🔔</span><span class="bell-dot" id="bellDot" hidden></span>
+      </button>
       <button class="avatar-btn" id="btnProfile" type="button" aria-label="プロフィールとアカウント" aria-haspopup="dialog"></button>
     </div>
   </header>
@@ -544,7 +558,7 @@ a{color:var(--teal)}
 /* =========================================================================
    STORIA — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.11-25';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.11-27';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_BASE='aoCompass_v1';
 const LS_SCOPE_KEY='aoCompass_scope';
 /* ログイン中のデータは、アカウントごとの引き出しに入れます。
@@ -696,7 +710,17 @@ function avatarGrad(){ return gradOf((S.profile&&S.profile.avatarColor)|0); }
 function avatarInitial(){ const nm=((S.profile&&S.profile.name)||'').trim(); if(nm) return nm.slice(0,1); if(sbUser&&sbUser.email) return sbUser.email.slice(0,1).toUpperCase(); return '👤'; }
 function avatarFace(){ const P=S.profile||{}; return P.avatarEmoji?esc(P.avatarEmoji):esc(avatarInitial()); }
 function avatarInner(){ const P=S.profile||{}; if(P.avatarPhoto){ return '<span class="av-img" style="background-image:url('+P.avatarPhoto+')"></span>'; } return '<span class="av-face" style="background:'+avatarGrad()+'">'+avatarFace()+'</span>'; }
-function updateAuthBar(){ renderProfileBtn(); }
+function updateAuthBar(){ renderProfileBtn(); renderBell(); }
+/* お知らせの件数をベルに出す */
+function renderBell(){
+  const b=document.getElementById('btnBell'), d=document.getElementById('bellDot');
+  if(!b||!d) return;
+  let n=0; try{ n=newSince().length; }catch(e){ n=0; }
+  if(n>0){ d.hidden=false; d.textContent=n>9?'9+':String(n); b.classList.add('has');
+    b.setAttribute('aria-label','お知らせ '+n+'件（未読）'); b.title='お知らせ '+n+'件'; }
+  else { d.hidden=true; b.classList.remove('has');
+    b.setAttribute('aria-label','お知らせ'); b.title='お知らせ'; }
+}
 function renderProfileBtn(){
   const b=document.getElementById('btnProfile'); if(!b) return;
   b.innerHTML=avatarInner();
@@ -931,6 +955,7 @@ document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>go(b.dataset.tab));
 $('#btnProfile').onclick=()=>openProfileMenu();
 
 function render(){
+  try{ setTimeout(renderBell,0); }catch(e){}
   document.querySelectorAll('.tab').forEach(b=>{
     const map={home:'home',schools:'schools',documents:'documents',interview:'interview'};
     const active=(map[view]===b.dataset.tab)||(b.dataset.tab==='more'&&!['home','schools','documents','interview'].includes(view));
@@ -1554,7 +1579,6 @@ function vHome(){
     const b1=el('button','btn primary','① まず活動を書き出す'); b1.onclick=()=>go('portfolio');
     const b3=el('button','btn ghost','使い方を見る'); b3.onclick=()=>openWelcome(true);
     row.append(b1,b3); c.appendChild(row); w.appendChild(c);
-    { const wn0=whatsNewCard(); if(wn0){ wn0.style.marginTop='12px'; w.appendChild(wn0); } }
     const sc0=startStepsCard(); if(sc0) w.appendChild(sc0);
     { const pc=proCard('志望理由書のどこが弱いのかを、本文から引用して指摘します。あなたが登録した活動履歴も読んだうえで、「書けるのに書いていない経験」を見つけます。');
       if(pc){ pc.style.marginTop='12px'; w.appendChild(pc); } }
@@ -1562,7 +1586,6 @@ function vHome(){
   }
   const _nm=(S.profile&&S.profile.name||'').trim();
   w.appendChild(pageHead(_nm&&S.prefs&&S.prefs.greet!==false?_nm+'さん、おかえりなさい':'ホーム','次にやることが、ひと目で分かります'));
-  { const wn=whatsNewCard(); if(wn) w.appendChild(wn); }
   { const sc=startStepsCard(); if(sc){ sc.style.marginBottom='12px'; w.appendChild(sc); } }
   { const pc=proCard('志望理由書のどこが弱いのかを、本文から引用して指摘します。あなたが登録した活動履歴も読んだうえで、「書けるのに書いていない経験」を見つけます。');
     if(pc) w.appendChild(pc); }
@@ -3363,7 +3386,7 @@ function maybeOnboard(){
    利用者には「前に開いたときより新しくなっていたら」だけ知らせます。 */
 const CHANGELOG=[
 /*NEWEST*/
-{v:'2026.08.11-25',d:'2026-08-07',t:'設定を目次のかたちに整理し、お問い合わせと更新のお知らせを追加しました。書類の画面も広げられます。'},
+{v:'2026.08.11-27',d:'2026-08-07',t:'お知らせを右上のベルにまとめ、未読の件数が出るようにしました。ホーム画面への追加方法を、iPhone・Android・パソコンすべて載せました。'},
 {v:'2026.08.11-15',d:'2026-08-07',t:'APIキーの用意が不要になりました。受験生パックに加入すると、設定なしでAIが使えます。'},
 {v:'2026.08.11-13',d:'2026-08-07',t:'「大学をさがす」を追加しました。書いた言葉から近い分野を出します。'},
 {v:'2026.08.11-12',d:'2026-08-07',t:'書類を削除できるようにしました。ホームに「はじめの3ステップ」を追加しました。'}
@@ -3375,6 +3398,7 @@ function markSeen(){ try{ localStorage.setItem(SEEN_KEY,APP_VER); }catch(e){} }
 function newSince(){
   const sv=seenVer();
   if(!sv) return [];                                   /* 初めての人には出さない */
+  if(sv===APP_VER) return [];                          /* いまの版を見ている */
   if(!CHANGELOG.length) return [];
   if(CHANGELOG[0].v===sv) return [];                   /* もう最新を見ている */
   let idx=-1;
@@ -3382,7 +3406,11 @@ function newSince(){
   if(idx<0) return CHANGELOG.slice(0,1);               /* 記録にない版なら、最新の1件だけ */
   return CHANGELOG.slice(0,Math.min(idx,5));
 }
+/* いまはベル（右上）に集約しているため、ホームには出しません */
 function whatsNewCard(){
+  return null;
+}
+function whatsNewCard_unused(){
   const list=newSince(); if(!list.length) return null;
   const c=el('div','card'); c.style.cssText='border-color:#bfdcc9;background:#f5fbf7;margin-bottom:12px';
   c.innerHTML='<div class="card-title"><span class="ic">🆕</span><h3>アプリが新しくなりました</h3></div>';
@@ -3410,6 +3438,7 @@ function sheetChangelog(){
       b.appendChild(r);
     });
     markSeen();
+    try{ renderBell(); }catch(e){}
   });
 }
 
@@ -3466,24 +3495,45 @@ function sheetDisplay(){
 }
 function sheetHomeAdd(){
   openSheet('📱 ホーム画面に追加する',(b,close)=>{
-    const ua=navigator.userAgent||'', ios=/iPhone|iPad|iPod/.test(ua);
+    const ua=navigator.userAgent||'';
+    const ios=/iPhone|iPad|iPod/.test(ua);
+    const android=/Android/.test(ua);
     b.appendChild(el('div','note info','追加すると、<b>ふつうのアプリと同じようにアイコンから開けます。</b>ブラウザのバーが消えて画面も広くなります。インストールではないので、容量はほとんど使いません。'));
-    const how=el('div','card tight');
-    how.innerHTML = ios
-      ? '<div class="small"><b>iPhone・iPad の場合</b></div>'
-        +'<div class="xsmall muted" style="margin-top:5px;line-height:1.9">① 画面下（または右上）の <b>共有ボタン（□に↑）</b> を押す<br>'
-        +'② メニューを下にたどって <b>「ホーム画面に追加」</b> を押す<br>'
-        +'③ 右上の <b>「追加」</b> を押す</div>'
-      : '<div class="small"><b>Android の場合</b></div>'
-        +'<div class="xsmall muted" style="margin-top:5px;line-height:1.9">① ブラウザ右上の <b>⋮（三点メニュー）</b> を押す<br>'
-        +'② <b>「アプリをインストール」</b>または「ホーム画面に追加」を押す</div>';
-    b.appendChild(how);
-    const other=el('details','acc'); other.innerHTML='<summary><span class="smt">もう一方のやり方も見る</span></summary>';
-    const od=el('div'); od.style.padding='8px 2px';
-    od.innerHTML = ios
-      ? '<div class="xsmall muted"><b>Android</b>：ブラウザ右上の ⋮ →「アプリをインストール」</div>'
-      : '<div class="xsmall muted"><b>iPhone・iPad</b>：共有ボタン（□に↑）→「ホーム画面に追加」</div>';
-    other.appendChild(od); b.appendChild(other);
+
+    const mk=(title,mine,steps,tip)=>{
+      const c=el('div','card tight'); c.style.marginTop='10px';
+      if(mine) c.style.cssText+=';border-color:#b9cfe4;background:#f4f8fc';
+      c.innerHTML='<div class="small"><b>'+title+'</b>'
+        +(mine?' <span class="badge ok">あなたの端末はこちら</span>':'')+'</div>'
+        +'<div class="xsmall muted" style="margin-top:6px;line-height:2">'+steps+'</div>'
+        +(tip?'<div class="xsmall muted" style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--line)">'+tip+'</div>':'');
+      return c;
+    };
+
+    const iphone = mk('🍎 iPhone・iPad（Safari）', ios,
+      '① 画面の下（横向きや iPad では右上）にある <b>共有ボタン</b>（□ から ↑ が出ているマーク）を押す<br>'
+      +'② メニューを<b>下にスクロール</b>して <b>「ホーム画面に追加」</b> を押す<br>'
+      +'③ 名前（STORIA）を確認して、右上の <b>「追加」</b> を押す',
+      'Chrome や他のブラウザでは追加できないことがあります。うまくいかないときは、<b>Safari で開き直して</b>から試してください。');
+
+    const droid = mk('🤖 Android（Chrome）', android,
+      '① ブラウザ右上の <b>⋮</b>（縦に点が3つ）を押す<br>'
+      +'② <b>「アプリをインストール」</b> または <b>「ホーム画面に追加」</b> を押す<br>'
+      +'③ 出てきた確認で <b>「インストール」／「追加」</b> を押す',
+      '画面の下に「アプリをインストール」の帯が自動で出ることもあります。それを押しても同じです。');
+
+    /* 自分の端末のほうを先に出す。どちらも必ず表示する。 */
+    if(android){ b.appendChild(droid); b.appendChild(iphone); }
+    else { b.appendChild(iphone); b.appendChild(droid); }
+
+    const pc=el('div','card tight'); pc.style.marginTop='10px';
+    pc.innerHTML='<div class="small"><b>💻 パソコン（Chrome / Edge）</b></div>'
+      +'<div class="xsmall muted" style="margin-top:6px;line-height:2">'
+      +'アドレスバーの右はしにある <b>インストールのマーク</b>（⊕ や画面のマーク）を押す<br>'
+      +'または ⋮ メニュー →「STORIA をインストール」</div>';
+    b.appendChild(pc);
+
+    b.appendChild(el('p','xsmall muted','※ 追加しても、入力したデータはそのまま引き継がれます。消えることはありません。'));
   });
 }
 function sheetData(){
@@ -5570,6 +5620,10 @@ try{ applyPrefs(); }catch(e){}
 render();
 initCloud();
 try{ maybeOnboard(); }catch(e){}
+(function(){ const b=document.getElementById('btnBell');
+  if(b) b.onclick=()=>{ try{ sheetChangelog(); }catch(e){} };
+  try{ renderBell(); }catch(e){}
+})();
 window.addEventListener('keydown',e=>{ if(e.key==='Escape'&&$('#overlay').classList.contains('open'))closeSheet(); });
 </script>
 </body>
