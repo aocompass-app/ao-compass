@@ -561,7 +561,7 @@ a{color:var(--teal)}
 /* =========================================================================
    STORIA — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.08';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.11-32';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_BASE='aoCompass_v1';
 const LS_SCOPE_KEY='aoCompass_scope';
 /* ログイン中のデータは、アカウントごとの引き出しに入れます。
@@ -1559,53 +1559,11 @@ function schoolProgress(s){
   const cl=s.checklist||{}; const keys=['req','gpa','doc_ao','doc_katsu','eng','photo','web','fee','mail','mensetsu'];
   const done=keys.filter(k=>cl[k]).length; return Math.round(done/keys.length*100);
 }
-/* 志望校に登録された日程のうち、今日以降でいちばん近いものを返す。
-   総合型は 出願 → 試験 → 合格発表 と続くので、締切が過ぎたあとも次の日程を示せるようにする。 */
-function nextSchoolDate(s){
-  if(!s) return null;
-  const cand=[['entryStart','エントリー開始'],['deadline','出願締切'],['examDate','試験日'],['resultDate','合格発表']];
-  let best=null;
-  for(let i=0;i<cand.length;i++){
-    const iso=s[cand[i][0]]; if(!iso) continue;
-    const d=daysUntil(iso); if(d==null||d<0) continue;
-    if(!best||d<best.days) best={key:cand[i][0],label:cand[i][1],iso:iso,days:d};
-  }
-  return best;
-}
-/* 日程が入っていて、そのすべてが過去になっているとき、最後に来た日程を返す。
-   未入力だけの学校（何も入っていない）と区別したいので null を返し分ける。 */
-function lastSchoolDate(s){
-  if(!s) return null;
-  const cand=[['entryStart','エントリー開始'],['deadline','出願締切'],['examDate','試験日'],['resultDate','合格発表']];
-  let last=null;
-  for(let i=0;i<cand.length;i++){
-    const iso=s[cand[i][0]]; if(!iso) continue;
-    const d=daysUntil(iso); if(d==null) continue;
-    if(d>=0) return null;
-    if(!last||d>last.days) last={key:cand[i][0],label:cand[i][1],iso:iso,days:d};
-  }
-  return last;
-}
-/* 第2引数に志望校を渡すと、出願締切が過ぎている／未設定のときに
-   試験日・合格発表など次の日程へ自動で切り替わる。渡さなければ従来どおりの表示。 */
-function countdownBox(iso,s){
+function countdownBox(iso){
   const AD=alertDays();
-  let label='出願締切', tiso=iso, dd=daysUntil(iso), over='';
-  if(dd==null||dd<0){
-    const nx=s?nextSchoolDate(s):null;
-    if(nx){ label=nx.label; tiso=nx.iso; over=(dd!=null&&dd<0)?'出願締切（'+fmtDate(iso)+'）は過ぎています':''; dd=nx.days; }
-  }
-  const box=el('div','countdown '+(dd!=null&&dd>=0&&dd<=AD?'urgent':dd!=null&&dd>=0&&dd<=AD*2?'soon':''));
-  /* 次の日程が無い＝登録された日程がすべて終わっているときは、最後の日程を出して終わりを伝える */
-  const fin=s?lastSchoolDate(s):null;
-  if(fin){
-    box.innerHTML='<div><div class="num">終了</div></div><div class="small muted">登録された日程は<br>すべて終わりました（最後：'+esc(fin.label)+' '+fmtDate(fin.iso)+'）</div>';
-    return box;
-  }
-  if(dd==null){ box.innerHTML='<div><div class="num">—</div></div><div class="small muted">締切未設定</div>'; return box; }
-  if(dd<0){ box.innerHTML='<div><div class="num">締切済</div></div><div class="small muted">出願締切<br>'+fmtDate(iso)+'</div>'; return box; }
-  box.innerHTML='<div><div class="num">'+dd+'</div><div class="small muted">日</div></div><div class="small muted">'+esc(label)+'<br>'+fmtDate(tiso)
-    +(over?'<br><span class="xsmall">'+esc(over)+'</span>':'')+'</div>';
+  const dd=daysUntil(iso); const box=el('div','countdown '+(dd!=null&&dd<=AD?'urgent':dd!=null&&dd<=AD*2?'soon':''));
+  if(dd==null){ box.innerHTML='<div><div class="num">—</div><div class="small muted">締切未設定</div></div>'; return box; }
+  box.innerHTML=`<div><div class="num">${dd<0?'締切済':dd}</div>${dd>=0?'<div class="small muted">日</div>':''}</div><div class="small muted">出願締切<br>${fmtDate(iso)}</div>`;
   return box;
 }
 function schoolName(id){ const s=S.schools.find(x=>x.id===id); return s?s.name:''; }
@@ -1688,7 +1646,7 @@ function vHome(){
       <div style="font-size:17px;font-weight:800;color:var(--navy)">${esc(primary.name)}</div>
       <div class="small muted">${esc(primary.faculty||'')} ${esc(primary.dept||'')}</div>
       <hr class="sep">`;
-    hero.appendChild(countdownBox(primary.deadline,primary));
+    hero.appendChild(countdownBox(primary.deadline));
     const prog=el('div'); prog.style.marginTop='12px';
     const pr=schoolProgress(primary);
     prog.innerHTML=`<div class="small muted" style="display:flex;justify-content:space-between"><span>出願準備の進捗</span><b>${pr}%</b></div><div class="prog" style="margin-top:5px"><span style="width:${pr}%"></span></div>`;
@@ -1696,7 +1654,6 @@ function vHome(){
     const open=el('button','btn sm ghost','詳細を見る'); open.style.marginTop='10px'; open.onclick=()=>{go('schools');setTimeout(()=>openSchool(primary.id),50);}; hero.appendChild(open);
   } else { hero.innerHTML='<p class="small muted">第一志望が未設定です。志望校タブで設定できます。</p>'; }
   w.appendChild(hero);
-  { const dc=homeDeadlinesCard(primary); if(dc) w.appendChild(dc); }
 
   // 今日やること（逆算プラン）
   w.appendChild(homeTodayCard());
@@ -1730,33 +1687,16 @@ function vHome(){
   const side=el('div');
   const dcard=el('div','card');
   dcard.innerHTML='<div class="card-title"><span class="ic">'+ico('pen')+'</span><h3>作成中の書類</h3></div>';
-  const draftAll=homeDraftList();
-  const drafts=draftAll.slice(0,3).map(function(x){ return x.d; });
+  const drafts=S.documents.filter(d=>d.status!=='完成').slice(0,3);
   if(!drafts.length) dcard.appendChild(el('p','small muted','作成中の書類はありません。'));
-  const _ad=alertDays();
-  draftAll.slice(0,3).forEach(function(x){
-    const d=x.d, nx=x.nx; const r=el('div','list-row'); const len=countJP(d.body);
-    /* 締切の近さのバッジ。日程が分からない書類には付けない（嘘の期限を作らないため） */
-    const dcls=!nx?'':nx.days<=_ad?'alert':nx.days<=_ad*2?'warn':'grey';
-    const dbadge=nx?' <span class="badge '+dcls+'" title="'+esc(nx.label+' '+fmtDate(nx.iso))+'">'+esc(nx.label)+(nx.days===0?' 今日':' あと'+nx.days+'日')+'</span>':'';
-    r.setAttribute('data-hdoc',d.id||'');
-    r.innerHTML='<div style="flex:1"><b class="small">'+esc(d.title)+'</b><div class="xsmall muted">'
-      +esc(shortName(schoolName(d.schoolId))||'—')+' ・ '+len+(d.charLimit?'/'+d.charLimit:'')+'字 '
-      +'<span class="badge '+(d.status==='完成'?'ok':'warn')+'">'+esc(d.status)+'</span>'+dbadge+'</div></div>';
-    const b=el('button','btn sm','開く'); b.onclick=function(){go('documents');setTimeout(function(){openDocEditor(d.id);},50);};
-    r.appendChild(b); dcard.appendChild(r);
-  });
-  if(draftAll.length>3) dcard.appendChild(el('p','xsmall muted','ほか'+(draftAll.length-3)+'件は「書類」タブにあります（締切が近いものから並べています）。'));
+  drafts.forEach(d=>{ const r=el('div','list-row'); const len=countJP(d.body); r.innerHTML=`<div style="flex:1"><b class="small">${esc(d.title)}</b><div class="xsmall muted">${esc(schoolName(d.schoolId)||'—')} ・ ${len}${d.charLimit?'/'+d.charLimit:''}字 <span class="badge ${d.status==='完成'?'ok':'warn'}">${esc(d.status)}</span></div></div>`; const b=el('button','btn sm','開く'); b.onclick=()=>{go('documents');setTimeout(()=>openDocEditor(d.id),50);}; r.appendChild(b); dcard.appendChild(r); });
   side.appendChild(dcard);
 
   const icard=el('div','card');
   icard.innerHTML='<div class="card-title"><span class="ic">'+ico('mic')+'</span><h3>次の面接練習</h3></div>';
-  /* 苦手を先に。登録順のままだと、苦手が4番目以降にあるとホームに一切出てこない */
-  const weakAll=(S.interview||[]).filter(q=>q.weak||!q.answer).sort((a,b)=>(b.weak?1:0)-(a.weak?1:0));
-  const weakQ=weakAll.slice(0,3);
+  const weakQ=S.interview.filter(q=>q.weak||!q.answer).slice(0,3);
   if(!weakQ.length) icard.appendChild(el('p','small muted','登録された質問はありません。'));
   weakQ.forEach(q=>{ const r=el('div','list-row'); r.innerHTML=`<div style="flex:1"><span class="small">${esc(q.question)}</span> ${q.weak?'<span class="badge alert">苦手</span>':'<span class="badge grey">未回答</span>'}</div>`; const b=el('button','btn sm','練習'); b.onclick=()=>{go('interview');setTimeout(()=>openInterview(q.id),50);}; r.appendChild(b); icard.appendChild(r); });
-  if(weakAll.length>3) icard.appendChild(el('p','xsmall muted','ほか'+(weakAll.length-3)+'問は「面接」タブにあります（苦手なものから並べています）。'));
   side.appendChild(icard);
   grid.appendChild(side);
   w.appendChild(grid);
@@ -1765,68 +1705,6 @@ function vHome(){
   start.onclick=()=>{ const t=tasksOn(todayISO()).filter(x=>!x.done)[0]||upcoming[0]; if(t){ openDaySheet(t.due||todayISO()); } else if(drafts[0]){go('documents');setTimeout(()=>openDocEditor(drafts[0].id),50);} else go('self'); };
   w.appendChild(start);
   return w;
-}
-/* ホームのヒーローは第一志望だけなので、併願校の日程はここに出す。
-   併願のほうが先に締切が来ることが多く、それを見落とすのが一番痛い。 */
-function homeDeadlinesCard(primary){
-  const AD=alertDays(); const list=[];
-  (S.schools||[]).forEach(function(s){
-    if(primary&&s.id===primary.id) return;
-    const nx=nextSchoolDate(s); if(!nx) return;
-    list.push({s:s,nx:nx});
-  });
-  if(!list.length) return null;
-  list.sort(function(a,b){ return a.nx.days-b.nx.days; });
-  const c=el('div','card');
-  c.innerHTML='<div class="card-title"><span class="ic">📮</span><h3>ほかの志望校の直近の日程</h3></div>';
-  c.setAttribute('data-home-deadlines','1');
-  list.slice(0,3).forEach(function(x){
-    const r=el('div','list-row'); r.setAttribute('data-dsid',x.s.id||'');
-    const cls=x.nx.days<=AD?'alert':x.nx.days<=AD*2?'warn':'grey';
-    r.innerHTML='<div style="flex:1"><b class="small">'+esc(shortName(x.s.name))+'</b> '+priorityBadge(x.s.priority)
-      +'<div class="xsmall muted">'+esc(x.nx.label)+' '+fmtDate(x.nx.iso)
-      +' <span class="badge '+cls+'">'+(x.nx.days===0?'今日':'あと'+x.nx.days+'日')+'</span></div></div>';
-    const b=el('button','btn sm','見る');
-    b.onclick=function(){ go('schools'); setTimeout(function(){ try{ openSchool(x.s.id); }catch(e){} },50); };
-    r.appendChild(b); c.appendChild(r);
-  });
-  if(list.length>3) c.appendChild(el('p','xsmall muted','ほか'+(list.length-3)+'校の日程は「志望校」タブで確認できます。'));
-  return c;
-}
-/* 作成中の書類を「締切が近い大学のものから」並べる。
-   登録順のままだと、締切がまだ遠い大学の書類がホームの3件を占めてしまい、
-   いちばん急いで書くべき書類が下に埋もれて見えなくなる。
-   出願締切がまだ残っていればそれを、過ぎていれば次の日程（試験日など）を「近さ」に使う。
-   志望校が未設定の書類は日程が分からないので最後に置く。 */
-function homeDraftList(){
-  const arr=(S.documents||[]).filter(function(d){ return d.status!=='完成'; });
-  const out=arr.map(function(d,i){
-    const s=(S.schools||[]).find(function(x){ return x.id===d.schoolId; });
-    const dl=s?daysUntil(s.deadline):null;
-    let nx=null;
-    if(dl!=null&&dl>=0) nx={label:'出願締切',iso:s.deadline,days:dl};
-    else if(s) nx=nextSchoolDate(s);
-    return {d:d,school:s,nx:nx,days:nx?nx.days:null,i:i};
-  });
-  out.sort(function(a,b){
-    const ax=(a.days==null)?999999:a.days, bx=(b.days==null)?999999:b.days;
-    return (ax===bx)?(a.i-b.i):(ax-bx);
-  });
-  return out;
-}
-/* その日にある志望校の日程を全部拾う。
-   7日ストリップの印は出願締切だけだったので、試験日・合格発表・エントリー開始の日が
-   無印のままカレンダーを開くまで気づけなかった。大事な順（締切→試験→エントリー→発表）に並べて返す。 */
-const DAY_EVENTS=[['deadline','出願締切','📮'],['examDate','試験日','✏️'],['entryStart','エントリー開始','🚩'],['resultDate','合格発表','🎊']];
-function schoolEventsOn(iso){
-  const out=[]; if(!iso) return out;
-  for(let i=0;i<DAY_EVENTS.length;i++){
-    const k=DAY_EVENTS[i];
-    (S.schools||[]).forEach(function(s){
-      if(s&&s[k[0]]===iso) out.push({key:k[0],label:k[1],icon:k[2],school:s.name||'',id:s.id});
-    });
-  }
-  return out;
 }
 function homeTodayCard(){
   const today=todayISO();
@@ -1850,12 +1728,10 @@ function homeTodayCard(){
   for(let i=0;i<7;i++){
     const iso=isoAdd(today,i); const dt=new Date(iso+'T00:00:00');
     const ts=tasksOn(iso), open=ts.filter(t=>!t.done).length;
-    const evs=schoolEventsOn(iso); const ev=evs[0]||null;
-    const cell=el('button','day-cell'+(i===0?' on':'')+(ev?' dl':''));
-    cell.innerHTML=`<span class="wd">${wd[dt.getDay()]}</span><span class="dn">${dt.getDate()}</span>`+(ev?'<span class="pin">'+ev.icon+'</span>':(open?`<span class="cnt">${open}</span>`:'<span class="cnt none">–</span>'));
-    if(ev) cell.setAttribute('data-dayev',evs.map(function(x){return x.label;}).join(','));
-    cell.title=evs.map(function(x){ return shortName(x.school)+' '+x.label; })
-      .concat(ts.map(t=>t.title)).join('\n')||'予定なし';
+    const dl=S.schools.some(sc=>sc.deadline===iso);
+    const cell=el('button','day-cell'+(i===0?' on':'')+(dl?' dl':''));
+    cell.innerHTML=`<span class="wd">${wd[dt.getDay()]}</span><span class="dn">${dt.getDate()}</span>`+(dl?'<span class="pin">📮</span>':(open?`<span class="cnt">${open}</span>`:'<span class="cnt none">–</span>'));
+    cell.title=ts.map(t=>t.title).join('\n')||'予定なし';
     cell.onclick=()=>openDaySheet(iso);
     strip.appendChild(cell);
   }
@@ -1866,22 +1742,11 @@ function homeTodayCard(){
   row.append(cal,re); c.appendChild(row);
   return c;
 }
-/* 「今日のひとこと」。出願締切だけを見ていたので、締切を過ぎると
-   試験が数日後でも助言が消えて「経験の棚卸しから…」に戻ってしまっていた。
-   次に来る日程（エントリー開始／出願締切／試験日／合格発表）に合わせて中身を変える。 */
-const ADVICE_TAIL={
-  entryStart:'開始前に募集要項と必要書類をそろえておくと、あとが楽になります。',
-  deadline:'今週は書類の推敲と面接練習に集中しましょう。',
-  examDate:'面接・小論文の練習と、当日の持ち物・会場までの行き方を確認しておきましょう。',
-  resultDate:'待つあいだも、併願校の準備と学校の課題は止めずに進めておきましょう。'
-};
 function homeAdvice(primary){
-  const nx=primary?nextSchoolDate(primary):null;
-  const draft=homeDraftList().map(function(x){ return x.d; })[0];
+  const dd=primary?daysUntil(primary.deadline):null;
+  const draft=S.documents.find(d=>d.status!=='完成');
   const bits=[];
-  if(nx&&nx.days<=30&&ADVICE_TAIL[nx.key]){
-    bits.push(esc(nx.label)+(nx.days===0?'は<b>今日</b>です。':'まで<b>あと'+nx.days+'日</b>です。')+ADVICE_TAIL[nx.key]);
-  }
+  if(dd!=null&&dd>=0&&dd<=30) bits.push(`出願まで残り<b>${dd}日</b>です。今週は書類の推敲と面接練習に集中しましょう。`);
   if(draft){ const a=analyzeText(draft.body,{charLimit:draft.charLimit,school:S.schools.find(s=>s.id===draft.schoolId),question:draft.question}); if(a.priorities.length) bits.push(`「${esc(draft.title)}」は、まず<b>${esc(a.priorities[0].title)}</b>から直すと良さそうです。`); }
   if(!bits.length) bits.push('経験の棚卸し（自己分析・活動実績）が、書類と面接の土台になります。少しずつ言葉にしていきましょう。');
   bits.push('※AIは合否を判断しません。最後は必ずあなた自身の言葉で確認してください。');
@@ -3570,8 +3435,7 @@ function maybeOnboard(){
    利用者には「前に開いたときより新しくなっていたら」だけ知らせます。 */
 const CHANGELOG=[
 /*NEWEST*/
-{v:'2026.08.08',d:'2026-08-08',t:'今回は「面接対策」と「小論文対策」のページを見直しました。バージョンは **2026.08.07-6** です。 これがいちばん大きな変更です。これまでは面接練習で回答を書いても、'},
-{v:'2026.08.11-31',d:'2026-08-07',t:'絵文字をやめて、線で描いたアイコンに統一しました。お知らせを右上のベルにまとめ、未読には NEW が付きます。'},
+{v:'2026.08.11-32',d:'2026-08-07',t:'絵文字をやめて、線で描いたアイコンに統一しました。お知らせを右上のベルにまとめ、未読には NEW が付きます。'},
 {v:'2026.08.11-15',d:'2026-08-07',t:'APIキーの用意が不要になりました。受験生パックに加入すると、設定なしでAIが使えます。'},
 {v:'2026.08.11-13',d:'2026-08-07',t:'「大学をさがす」を追加しました。書いた言葉から近い分野を出します。'},
 {v:'2026.08.11-12',d:'2026-08-07',t:'書類を削除できるようにしました。ホームに「はじめの3ステップ」を追加しました。'}
@@ -4991,7 +4855,7 @@ async function callAI(system,user,opts){
   if(!token) throw new Error('LOGIN_REQUIRED');
 
   const controller=new AbortController();
-  const to=setTimeout(()=>controller.abort(),70000);
+  const to=setTimeout(()=>controller.abort(),180000);   /* 長い書類の分析は1〜2分かかるため */
   try{
     const res=await fetch(AI_ENDPOINT,{method:'POST',signal:controller.signal,
       headers:{'content-type':'application/json','authorization':'Bearer '+token},
@@ -5008,7 +4872,7 @@ async function callAI(system,user,opts){
     try{ if(d&&d.usage) recordUsage('app',(d.usage.model||''),d.usage.in||0,d.usage.out||0,opts.label||opts.feature||''); }catch(e){}
     return String((d&&d.text)||'').trim();
   }catch(e){
-    if(e.name==='AbortError') throw new Error('応答がタイムアウトしました。通信環境を確認して再試行してください。');
+    if(e.name==='AbortError') throw new Error('3分待っても返ってきませんでした。書類が長すぎるか、いま混み合っている可能性があります。少し時間をおいて、もう一度お試しください。');
     throw e;
   }finally{ clearTimeout(to); }
 }
@@ -5021,7 +4885,7 @@ async function friendlyErr(res){ let t=''; try{t=await res.text();}catch(e){}
 function extractJSON(s){ if(!s) return null; const m=s.match(/\{[\s\S]*\}/); if(!m) return null;
   try{return JSON.parse(m[0]);}catch(e){ try{return JSON.parse(m[0].replace(/,\s*\}/g,'}').replace(/,\s*\]/g,']'));}catch(e2){return null;} } }
 
-function aiLoading(container,msg){ container.innerHTML=''; const d=el('div','empty'); d.innerHTML=`<div class="em">🤖</div><h4>${esc(msg||'AIが考えています…')}</h4><p class="small muted">数秒〜十数秒かかることがあります</p>`; d.appendChild(el('div','spinner')); container.appendChild(d); return d; }
+function aiLoading(container,msg){ container.innerHTML=''; const d=el('div','empty'); d.innerHTML=`<div class="em">${ico('spark',30)}</div><h4>${esc(msg||'AIが考えています…')}</h4><p class="small muted">長い書類だと<b>1〜2分</b>かかります。画面を閉じずにお待ちください。</p><p class="xsmall muted" style="margin-top:4px">※ 途中で閉じても回数は消費されません</p>`; d.appendChild(el('div','spinner')); container.appendChild(d); return d; }
 function aiError(container,e,retry){ const d=el('div','card'); d.innerHTML=`<div class="card-title"><span class="ic">${ico('warn')}</span><h3>AIに接続できませんでした</h3></div><p class="small">${esc(e.message||String(e))}</p>`; const row=el('div','btn-row');row.style.marginTop='8px'; const s=el('button','btn sm','AI設定を開く');s.onclick=()=>openAISettings(); row.appendChild(s); if(retry){const r=el('button','btn sm ghost','再試行');r.onclick=retry;row.appendChild(r);} d.appendChild(row); container.appendChild(d); }
 /* AIの自由記述テキストを簡易マークダウンで表示 */
 function renderAIText(container,text){
