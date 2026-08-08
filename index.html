@@ -184,6 +184,10 @@ textarea.input{resize:vertical;min-height:80px;line-height:1.7}
 .check:active{transform:scale(.92)}
 .check.on{background:var(--teal);border-color:var(--teal);color:#fff}
 .strike{text-decoration:line-through;color:var(--ink-3)}
+/* 未完了タスクの区切り見出し（次の .list-row の上線がそのまま下線になる） */
+.tgh{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:16px 0 0}
+.tgh.f{margin-top:2px}
+.tgh .tgh-t{font-size:13px;font-weight:800;color:var(--navy)}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px}
 .kv dt{color:var(--ink-3);font-weight:600}
 .kv dd{margin:0}
@@ -561,7 +565,7 @@ a{color:var(--teal)}
 /* =========================================================================
    STORIA — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.08';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.08-2';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_BASE='aoCompass_v1';
 const LS_SCOPE_KEY='aoCompass_scope';
 /* ログイン中のデータは、アカウントごとの引き出しに入れます。
@@ -3479,6 +3483,7 @@ function maybeOnboard(){
    利用者には「前に開いたときより新しくなっていたら」だけ知らせます。 */
 const CHANGELOG=[
 /*NEWEST*/
+{v:'2026.08.08-2',d:'2026-08-08',t:'今回は「提出書類」のページを見直しました。バージョンは **2026.08.08** です。 これがいちばん大きな変更です。これまで書類の志望校は、新しく作るときにしか選べませんでした。'},
 {v:'2026.08.08',d:'2026-08-08',t:'今回は「提出書類」のページを見直しました。バージョンは **2026.08.08** です。 これがいちばん大きな変更です。これまで書類の志望校は、新しく作るときにしか選べませんでした。'},
 {v:'2026.08.11-32',d:'2026-08-07',t:'絵文字をやめて、線で描いたアイコンに統一しました。お知らせを右上のベルにまとめ、未読には NEW が付きます。'},
 {v:'2026.08.11-15',d:'2026-08-07',t:'APIキーの用意が不要になりました。受験生パックに加入すると、設定なしでAIが使えます。'},
@@ -4294,11 +4299,50 @@ function applyPlan(items,mode){
 }
 function hasPlan(){ return S.tasks.some(t=>t.auto); }
 function tasksOn(iso){ return S.tasks.filter(t=>t.due===iso); }
+/* ---- 未完了タスクの並びを「時期」で区切る ----------------------------------
+   締切順（due 昇順・期限なしは末尾）に並べると、下の5つは必ずこの順に固まる。
+   だから並び順は一切変えずに、切り替わったところへ見出しを挿すだけで区切れる。 */
+const TASK_GROUPS=[
+  ['over','⏰ 期限を過ぎた','alert'],
+  ['today','📌 今日','teal'],
+  ['week','7日以内','warn'],
+  ['later','それ以降','grey'],
+  ['none','期限なし','grey']
+];
+function taskGroup(t){
+  if(!t||!t.due) return 'none';
+  const today=todayISO();
+  if(t.due<today) return 'over';
+  if(t.due===today) return 'today';
+  return t.due<=isoAdd(today,7)?'week':'later';
+}
+function taskGroupCounts(){
+  const c={over:0,today:0,week:0,later:0,none:0};
+  ((S&&S.tasks)||[]).forEach(t=>{ if(!t.done) c[taskGroup(t)]++; });
+  return c;
+}
+function taskGroupHead(key,n,first){
+  const g=TASK_GROUPS.filter(x=>x[0]===key)[0]||['none','その他','grey'];
+  const h=el('div','tgh'+(first?' f':'')); h.setAttribute('data-tgh',key);
+  h.innerHTML='<span class="tgh-t">'+g[1]+'</span><span class="badge '+g[2]+'" data-tkg="'+key+'">'+n+'件</span>';
+  return h;
+}
+/* ---- 志望校の重要日程を日付から引く（カレンダー・その日のプランで使う） ---- */
+const SCHOOL_EVENTS=[['entryStart','✏️','エントリー開始'],['deadline','📮','出願締切'],['examDate','📝','試験日'],['resultDate','🎉','合格発表']];
+function schoolEventsOn(iso){
+  const out=[];
+  if(!iso||!S||!S.schools) return out;
+  S.schools.forEach(s=>{ SCHOOL_EVENTS.forEach(e=>{ if(s[e[0]]&&s[e[0]]===iso) out.push({school:s,kind:e[0],icon:e[1],label:e[2]}); }); });
+  return out;
+}
+function schoolEventIcons(evs){
+  const ic=[]; (evs||[]).forEach(e=>{ if(ic.indexOf(e.icon)<0) ic.push(e.icon); }); return ic;
+}
 function openDaySheet(iso){
   openSheet(fmtDate(iso)+' のプラン',(b)=>{
     const ts=tasksOn(iso);
-    const dls=S.schools.filter(s=>s.deadline===iso);
-    dls.forEach(s=>{ const n=el('div','note'); n.innerHTML='📮 <b>'+esc(s.name)+' の出願締切</b>です。'; b.appendChild(n); });
+    const evs=schoolEventsOn(iso);
+    evs.forEach(e=>{ const n=el('div','note'); n.innerHTML=e.icon+' <b>'+esc(e.school.name)+' の'+esc(e.label)+'</b>です。'; b.appendChild(n); });
     if(!ts.length){ b.appendChild(el('p','small muted','この日に予定はありません。')); }
     ts.forEach(t=>{ const c=el('div','card tight'); c.appendChild(taskRow(t,false)); if(t.why){ const w=el('p','xsmall muted','💡 '+t.why); w.style.margin='2px 0 0 30px'; c.appendChild(w);} b.appendChild(c); });
     const addb=el('button','btn sm block','＋ この日にタスクを追加'); addb.style.marginTop='8px';
@@ -4549,7 +4593,17 @@ function vTasks(){
   const open=S.tasks.filter(t=>!t.done).sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'));
   const done=S.tasks.filter(t=>t.done);
   if(!S.tasks.length){ w.appendChild(emptyState('✅','タスクがありません','「募集要項を確認」「志望理由書の初稿」「面接練習」など、やることを追加しましょう。志望校のチェックリストからも自動作成されます。',(()=>{const b=el('button','btn primary','タスクを追加');b.onclick=()=>editTask(null);return b;})())); return w; }
-  const oc=el('div','card'); oc.innerHTML='<div class="card-title"><span class="ic">'+ico('pin')+'</span><h3 data-tk="open">未完了（'+open.length+'）</h3></div>'; if(!open.length)oc.appendChild(el('p','small muted','未完了のタスクはありません。お疲れさまです！')); open.forEach(t=>oc.appendChild(taskRow(t,false))); w.appendChild(oc);
+  const oc=el('div','card'); oc.innerHTML='<div class="card-title"><span class="ic">'+ico('pin')+'</span><h3 data-tk="open">未完了（'+open.length+'）</h3></div>'; if(!open.length)oc.appendChild(el('p','small muted','未完了のタスクはありません。お疲れさまです！'));
+  /* 締切順のまま「期限を過ぎた／今日／7日以内／それ以降／期限なし」で区切る。
+     行の順番は従来どおりなので、続けてチェックを押しても隣の行には入らない。 */
+  const gcount=taskGroupCounts(); let gcur=null, gfirst=true;
+  open.forEach(t=>{
+    const g=taskGroup(t);
+    if(g!==gcur){ gcur=g; oc.appendChild(taskGroupHead(g,gcount[g],gfirst)); gfirst=false; }
+    oc.appendChild(taskRow(t,false));
+  });
+  if(gcount.over) oc.appendChild(el('p','xsmall muted','※ 期限を過ぎたタスクは消えません。日付を変えるか、終わったらチェックを付けてください。'));
+  w.appendChild(oc);
   if(done.length){ const dc=el('details','acc'); dc.innerHTML='<summary><span data-tk="done">完了済み（'+done.length+'）</span></summary>'; const body=el('div','acc-body'); done.forEach(t=>body.appendChild(taskRow(t,false))); dc.appendChild(body); w.appendChild(dc); }
   return w;
 }
@@ -4575,6 +4629,9 @@ function syncTaskCounts(){
     else if(k==='done') x.textContent='完了済み（'+doneN+'）';
     else if(k==='today'){ x.textContent=tdD+'/'+td.length+' 完了'; x.className='badge '+(td.length&&tdD===td.length?'ok':'teal'); }
   });
+  /* 区切り見出しの件数も合わせる（行は動かさず、数字だけ減る） */
+  const gc=taskGroupCounts();
+  document.querySelectorAll('[data-tkg]').forEach(x=>{ const k=x.getAttribute('data-tkg'); if(gc[k]!=null) x.textContent=gc[k]+'件'; });
 }
 /* 指がすべった直後の二度押しで、別の行に入ってしまうのを防ぐ */
 let _tapAt=0,_tapEl=null;
@@ -4606,24 +4663,32 @@ function taskCalendar(){
   const next=el('button','btn sm ghost','次の月 ›'); next.onclick=()=>{taskCalendar._off++;render();};
   const ttl=el('h4',null,`${y}年${m+1}月`); ttl.style.margin='0';
   nav.append(prev,ttl,next); head.appendChild(nav);
+  /* 先の月・前の月を見たまま画面を移ると、戻ってきたときも同じ月のままになる。
+     今日がどこにも映っていない状態から1タップで戻せるようにする */
+  if(taskCalendar._off!==0){
+    const bk=el('button','btn sm block','今月（'+(now.getMonth()+1)+'月）に戻る');
+    bk.style.marginTop='6px'; bk.onclick=()=>{taskCalendar._off=0;render();};
+    head.appendChild(bk);
+  }
   const grid=el('div'); grid.style.cssText='display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-top:8px';
   ['日','月','火','水','木','金','土'].forEach(d=>{const c=el('div','xsmall muted');c.style.textAlign='center';c.textContent=d;grid.appendChild(c);});
   for(let i=0;i<start;i++)grid.appendChild(el('div'));
   for(let d=1;d<=days;d++){
     const iso=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const all=S.tasks.filter(t=>t.due===iso); const dayTasks=all.filter(t=>!t.done);
-    const isDl=S.schools.filter(sc=>sc.deadline===iso);
+    /* 出願締切だけでなく、エントリー開始・試験日・合格発表もカレンダーに出す */
+    const evs=schoolEventsOn(iso); const evIcons=schoolEventIcons(evs);
     const cell=el('div');
-    cell.style.cssText='min-height:62px;border:1px solid var(--line);border-radius:8px;padding:3px;font-size:11px;position:relative;overflow:hidden;cursor:pointer;'+(iso===todayISO()?'background:var(--teal-soft);border-color:var(--teal);':'')+(isDl.length?'border-color:var(--orange);':'');
-    cell.innerHTML=`<div style="font-weight:700">${d}${isDl.length?' <span style="color:var(--orange)">📮</span>':''}${all.length&&!dayTasks.length?' <span style="color:var(--ok)">✓</span>':''}</div>`;
+    cell.style.cssText='min-height:62px;border:1px solid var(--line);border-radius:8px;padding:3px;font-size:11px;position:relative;overflow:hidden;cursor:pointer;'+(iso===todayISO()?'background:var(--teal-soft);border-color:var(--teal);':'')+(evs.length?'border-color:var(--orange);':'');
+    cell.innerHTML=`<div style="font-weight:700">${d}${evIcons.length?' <span style="color:var(--orange)">'+evIcons.slice(0,2).join('')+'</span>':''}${all.length&&!dayTasks.length?' <span style="color:var(--ok)">✓</span>':''}</div>`;
     dayTasks.slice(0,2).forEach(t=>{ const l=el('div'); l.style.cssText='margin-top:2px;background:var(--orange);color:#fff;border-radius:4px;font-size:9px;line-height:1.25;padding:1px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'; l.textContent=t.title; cell.appendChild(l); });
     if(dayTasks.length>2){ const mo=el('div'); mo.style.cssText='font-size:9px;color:var(--ink-3);margin-top:1px'; mo.textContent='＋'+(dayTasks.length-2)+'件'; cell.appendChild(mo); }
-    cell.title=(isDl.map(sc=>'📮 '+sc.name+' 出願締切').concat(all.map(t=>(t.done?'✓ ':'')+t.title))).join('\n')||'予定なし';
+    cell.title=(evs.map(e=>e.icon+' '+e.school.name+' '+e.label).concat(all.map(t=>(t.done?'✓ ':'')+t.title))).join('\n')||'予定なし';
     cell.onclick=()=>openDaySheet(iso);
     grid.appendChild(cell);
   }
   head.appendChild(grid);
-  const lg=el('p','xsmall muted','タップするとその日の予定を確認・チェックできます。📮＝出願締切、✓＝その日の予定は完了。'); lg.style.margin='8px 0 0'; head.appendChild(lg);
+  const lg=el('p','xsmall muted','タップするとその日の予定を確認・チェックできます。✏️＝エントリー開始、📮＝出願締切、📝＝試験日、🎉＝合格発表、✓＝その日の予定は完了。日程は志望校に登録した内容から表示しています（必ず募集要項の原本で確認してください）。'); lg.style.margin='8px 0 0'; head.appendChild(lg);
   wrap.appendChild(head);
   const up=S.tasks.filter(t=>!t.done&&t.due).sort((a,b)=>a.due.localeCompare(b.due)).slice(0,5);
   const uc=el('div','card tight'); uc.innerHTML='<h4>近い締切</h4>'; up.forEach(t=>uc.appendChild(taskRow(t,true))); if(!up.length)uc.appendChild(el('p','small muted','期限つきタスクはありません。')); wrap.appendChild(uc);
