@@ -561,7 +561,7 @@ a{color:var(--teal)}
 /* =========================================================================
    STORIA — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.11-32';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.08';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_BASE='aoCompass_v1';
 const LS_SCOPE_KEY='aoCompass_scope';
 /* ログイン中のデータは、アカウントごとの引き出しに入れます。
@@ -3023,6 +3023,9 @@ window.addEventListener('pagehide',flushAutosave);
 window.addEventListener('beforeunload',flushAutosave);
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') flushAutosave(); });
 
+/* オブジェクトの浅いコピー（古いiOS Safariで動かない {...obj} を使わないため） */
+function shallowCopy(o){ const r={}; if(o) Object.keys(o).forEach(function(k){ r[k]=o[k]; }); return r; }
+
 function openDocEditor(id,tab){
   const d=S.documents.find(x=>x.id===id); if(!d) return;
   openSheet(d.title,(b)=>{
@@ -3040,12 +3043,53 @@ function openDocEditor(id,tab){
       if(d.question){ const qb=el('div','note info'); qb.innerHTML='<b>設問：</b>'+nl2br(d.question); pane.appendChild(qb); }
       const stSel=fieldSelect('ステータス',d.status,['下書き','修正中','添削待ち','完成']); stSel.get=stSel.get; stSel.querySelector('select').onchange=e=>{d.status=e.target.value;touchDoc(d);}; pane.appendChild(stSel);
       pane.appendChild(el('p','xsmall muted','「完成」にするまで、逆算プランに「推敲する」予定が繰り返し入り続けます。書類は一度では仕上がらないので、少しずつ何度も直していきましょう。'));
-      const tySel=fieldSelect('種別',d.type||'志望理由書',DOC_TYPES); tySel.querySelector('select').onchange=e=>{d.type=e.target.value;touchDoc(d);}; pane.appendChild(tySel);
+      const tySel=fieldSelect('種別',d.type||'志望理由書',DOC_TYPES); tySel.querySelector('select').onchange=e=>{d.type=e.target.value;touchDoc(d);paintDocMeta();}; pane.appendChild(tySel);
+      /* 志望校はあとからでも結びつけられる（未設定だと「提出書類の取り組み状況」に出てこない） */
+      const scOpts=[{value:'',label:'— 未設定 —'}].concat((S.schools||[]).map(function(s){ return {value:s.id,label:s.name+(s.faculty?' '+s.faculty:'')}; }));
+      const scSel=fieldSelect('志望校',d.schoolId||'',scOpts);
+      scSel.querySelector('select').onchange=function(e){ d.schoolId=e.target.value||null; touchDoc(d); paintDocMeta(); try{ render(); }catch(x){} };
+      pane.appendChild(scSel);
+      const scNote=el('p','xsmall muted'); scNote.style.margin='-6px 0 10px'; pane.appendChild(scNote);
+      function paintDocMeta(){
+        const s=d.schoolId?(S.schools||[]).filter(function(x){ return x.id===d.schoolId; })[0]:null;
+        if(!s){
+          scNote.className='xsmall'; scNote.style.color=(S.schools&&S.schools.length)?'var(--alert)':'';
+          scNote.innerHTML=(S.schools&&S.schools.length)
+            ?'⚠️ 志望校が未設定です。設定すると、志望校ごとの「提出書類の取り組み状況」に反映されます。'
+            :'志望校を登録すると、ここで結びつけられます。';
+          return;
+        }
+        let labels=[]; try{ labels=requiredDocs(s)||[]; }catch(x){}
+        const hit=labels.filter(function(L){ return docMatchesLabel(d,L); });
+        scNote.className='xsmall muted'; scNote.style.color='';
+        scNote.innerHTML=hit.length
+          ?('「'+esc(shortName(s.name))+'」の必要書類 <b>'+esc(hit.join('・'))+'</b> として取り組み状況に反映されます。')
+          :('この書類は「'+esc(shortName(s.name))+'」の必要書類'+(labels.length?('（'+esc(labels.slice(0,4).join('・'))+(labels.length>4?' ほか':'')+'）'):'')+'のどれにも当てはまっていません。取り組み状況に入れるには、上の「種別」かタイトルを書類名に合わせてください。');
+      }
+      paintDocMeta();
       const ta=el('textarea','input'); ta.rows=14; ta.value=d.body||''; ta.setAttribute('aria-label','本文'); ta.style.minHeight='240px'; pane.appendChild(ta);
-      const cnt=el('div','counter'); pane.appendChild(cnt);
+      /* 文字数の表示と、あとから直せる文字数制限 */
+      const cntRow=el('div'); cntRow.style.cssText='display:flex;align-items:center;gap:8px;margin-top:4px';
+      const cnt=el('div','counter'); cnt.style.flex='1'; cntRow.appendChild(cnt);
+      const limWrap=el('label','xsmall muted'); limWrap.style.cssText='display:inline-flex;align-items:center;gap:4px;flex:none;white-space:nowrap';
+      limWrap.appendChild(el('span',null,'制限'));
+      const limIn=el('input','input'); limIn.type='number'; limIn.min='0'; limIn.setAttribute('inputmode','numeric');
+      limIn.placeholder='未設定'; limIn.value=d.charLimit?String(d.charLimit):''; limIn.setAttribute('aria-label','文字数制限');
+      limIn.style.cssText='width:78px;padding:4px 6px;border-radius:8px;font-size:12.5px;text-align:right';
+      limWrap.appendChild(limIn); limWrap.appendChild(el('span',null,'字'));
+      cntRow.appendChild(limWrap); pane.appendChild(cntRow);
       pane.appendChild(el('p','xsmall muted','本文は直接入力のほか、下の「📎 ファイルを読み込む」でPDF・Word・パワポ(.pptx)・テキストの内容を取り込めます（パワポはスライドごとに読み取り、種別を「プレゼン資料」にするとAIがスライド構成まで添削）。'+(d.sourceFile?(' ／ 取込元：'+d.sourceFile):'')));
-      const updateCnt=()=>{ const len=countJP(ta.value); let cls='counter'; if(d.charLimit){ if(len>d.charLimit)cls+=' over'; else if(len>d.charLimit*0.9)cls+=' near'; } cnt.className=cls; cnt.textContent=`${len}${d.charLimit?' / '+d.charLimit+'字':' 字'}`+(d.charLimit&&len>d.charLimit?`（${len-d.charLimit}字 超過）`:''); };
+      const updateCnt=()=>{ const len=countJP(ta.value); let cls='counter';
+        if(d.charLimit){ if(len>d.charLimit)cls+=' over'; else if(len>d.charLimit*0.9)cls+=' near'; }
+        cnt.className=cls;
+        cnt.textContent=len+(d.charLimit
+          ?(' / '+d.charLimit+'字'+(len>d.charLimit?('（'+(len-d.charLimit)+'字 超過）'):('（あと'+(d.charLimit-len)+'字）')))
+          :' 字');
+      };
       updateCnt();
+      limIn.addEventListener('input',function(){ const v=parseInt(limIn.value,10); d.charLimit=(isFinite(v)&&v>0)?v:0; updateCnt(); });
+      limIn.addEventListener('change',function(){ touchDoc(d); });
+      limIn.addEventListener('blur',function(){ touchDoc(d); });
       const docSt=saveStatusEl(); pane.appendChild(docSt);
       ta.addEventListener('input',updateCnt);
       const saveDoc=bindAutosave(ta,'doc:'+d.id,v=>{ d.body=v; d.updatedAt=Date.now(); },docSt,{delay:700});
@@ -3055,7 +3099,7 @@ function openDocEditor(id,tab){
       const row=el('div','btn-row'); row.style.marginTop='10px';
       const imp=el('button','btn sm teal','📎 ファイルを読み込む（PDF/Word/パワポ）'); imp.onclick=()=>pickFile('.pdf,.docx,.pptx,.txt,.md,.csv',(text,meta)=>{ ta.value = ta.value.trim() ? (ta.value.trim()+'\n\n'+text) : text; updateCnt(); d.body=ta.value; d.sourceFile=meta.name||d.sourceFile; touchDoc(d); toast('「'+(meta.name||'ファイル')+'」を読み込みました','ok'); });
       const saveV=el('button','btn sm','この内容をバージョン保存'); saveV.onclick=()=>{ d.body=ta.value; d.versions=d.versions||[]; d.versions.unshift({ts:Date.now(),body:ta.value}); touchDoc(d); toast('バージョンを保存しました','ok'); };
-      const dup=el('button','btn sm ghost','この下書きを複製'); dup.onclick=()=>{ const c={...d,id:uid(),title:d.title+'（複製）',versions:[],feedbacks:(d.feedbacks||[]).map(x=>({...x})),updatedAt:Date.now(),body:ta.value}; S.documents.push(c); save(); toast('複製しました','ok'); closeSheet(); go('documents'); };
+      const dup=el('button','btn sm ghost','この下書きを複製'); dup.onclick=()=>{ const c=shallowCopy(d); c.id=uid(); c.title=d.title+'（複製）'; c.versions=[]; c.feedbacks=(d.feedbacks||[]).map(function(x){ return shallowCopy(x); }); c.updatedAt=Date.now(); c.body=ta.value; S.documents.push(c); save(); toast('複製しました','ok'); closeSheet(); go('documents'); };
       const delD=el('button','btn sm danger','この書類を削除'); delD.onclick=()=>deleteDoc(d.id,()=>{ try{ closeSheet(); }catch(e){} });
       row.append(imp,saveV,dup,delD); pane.appendChild(row);
       const nb=fieldText('メモ（段落メモ・自分用）',d.notes,null,{area:true,rows:2}); nb.querySelector('textarea').onchange=e=>{d.notes=e.target.value;touchDoc(d);}; pane.appendChild(nb);
@@ -3435,6 +3479,7 @@ function maybeOnboard(){
    利用者には「前に開いたときより新しくなっていたら」だけ知らせます。 */
 const CHANGELOG=[
 /*NEWEST*/
+{v:'2026.08.08',d:'2026-08-08',t:'今回は「提出書類」のページを見直しました。バージョンは **2026.08.08** です。 これがいちばん大きな変更です。これまで書類の志望校は、新しく作るときにしか選べませんでした。'},
 {v:'2026.08.11-32',d:'2026-08-07',t:'絵文字をやめて、線で描いたアイコンに統一しました。お知らせを右上のベルにまとめ、未読には NEW が付きます。'},
 {v:'2026.08.11-15',d:'2026-08-07',t:'APIキーの用意が不要になりました。受験生パックに加入すると、設定なしでAIが使えます。'},
 {v:'2026.08.11-13',d:'2026-08-07',t:'「大学をさがす」を追加しました。書いた言葉から近い分野を出します。'},
@@ -4391,11 +4436,16 @@ function requiredDocs(s){
   const i=out.indexOf('志望理由書'); if(i>0){ out.splice(i,1); out.unshift('志望理由書'); }   /* 中心の書類を先頭に */
   return out;
 }
+/* 必要書類の名前（例：志望理由書）と、作った書類の対応づけ。種別かタイトルで見る */
+function docMatchesLabel(d,label){
+  if(!d||!label) return false;
+  const key=String(label).replace(/書$/,'');
+  return d.type===label||(!!d.title&&d.title.indexOf(key)>=0)||(!!d.type&&d.type.indexOf(key)>=0);
+}
 /* その書類が今どこまで進んでいるか */
 function docProgress(s,label){
-  const key=String(label).replace(/書$/,'');
   const ds=(S.documents||[]).filter(d=>d.schoolId===s.id);
-  const hit=ds.filter(d=>d.type===label||(d.title&&d.title.indexOf(key)>=0)||(d.type&&d.type.indexOf(key)>=0));
+  const hit=ds.filter(d=>docMatchesLabel(d,label));
   if(!hit.length) return {state:'none',doc:null,len:0};
   const best=hit.slice().sort((a,b)=>countJP(b.body||'')-countJP(a.body||''))[0];
   const len=countJP(best.body||'');
