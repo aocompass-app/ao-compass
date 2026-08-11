@@ -184,10 +184,6 @@ textarea.input{resize:vertical;min-height:80px;line-height:1.7}
 .check:active{transform:scale(.92)}
 .check.on{background:var(--teal);border-color:var(--teal);color:#fff}
 .strike{text-decoration:line-through;color:var(--ink-3)}
-/* 未完了タスクの区切り見出し（次の .list-row の上線がそのまま下線になる） */
-.tgh{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:16px 0 0}
-.tgh.f{margin-top:2px}
-.tgh .tgh-t{font-size:13px;font-weight:800;color:var(--navy)}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px}
 .kv dt{color:var(--ink-3);font-weight:600}
 .kv dd{margin:0}
@@ -565,7 +561,7 @@ a{color:var(--teal)}
 /* =========================================================================
    STORIA — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.08-5';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.11-34';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_BASE='aoCompass_v1';
 const LS_SCOPE_KEY='aoCompass_scope';
 /* ログイン中のデータは、アカウントごとの引き出しに入れます。
@@ -1062,10 +1058,7 @@ function openSheet(title, buildBody, opts={}){
   ov.classList.add('open'); document.body.style.overflow='hidden';
   ov.onclick=e=>{ if(e.target===ov) closeSheet(); };
 }
-/* 閉じる前に、待機中の自動保存をすべて確定させる。
-   入力欄はシートごと DOM から外れるだけで blur が飛ばない端末があり、
-   打った直後（自動保存の700ms以内）に「×」や背景タップで閉じると最後の一文が消えていた。 */
-function closeSheet(){ try{ flushAutosave(); }catch(e){} const sh=$('#sheet'); if(sh) sh.classList.remove('wide'); $('#overlay').classList.remove('open'); document.body.style.overflow=''; }
+function closeSheet(){ const sh=$('#sheet'); if(sh) sh.classList.remove('wide'); $('#overlay').classList.remove('open'); document.body.style.overflow=''; }
 function confirmDelete(msg,cb){ openSheet('削除の確認',(b,close)=>{ b.appendChild(el('p','small muted',esc(msg))); const row=el('div','btn-row'); row.style.marginTop='8px'; const c=el('button','btn','キャンセル');c.onclick=close; const d=el('button','btn danger','削除する'); d.onclick=()=>{close();cb();}; row.append(c,d); b.appendChild(row); }); }
 
 /* ---------------- Form helper ---------------- */
@@ -1566,41 +1559,8 @@ function schoolProgress(s){
   const cl=s.checklist||{}; const keys=['req','gpa','doc_ao','doc_katsu','eng','photo','web','fee','mail','mensetsu'];
   const done=keys.filter(k=>cl[k]).length; return Math.round(done/keys.length*100);
 }
-/* ---- 志望校の「次に来る日程」 ----
-   出願締切だけを見ていると、出願が済んだ学校は「締切済」で止まってしまい、
-   いちばん緊張する試験日・合格発表までの日数が画面から消える。
-   エントリー開始・出願締切・試験日・合格発表のうち、今日以降でいちばん近いものを1つ返す。 */
-const SCHOOL_DATE_FIELDS=[['entryStart','エントリー開始'],['deadline','出願締切'],['examDate','試験日'],['resultDate','合格発表']];
-function schoolNextDate(s){
-  if(!s) return null;
-  let best=null;
-  SCHOOL_DATE_FIELDS.forEach(function(f){
-    const iso=s[f[0]]; if(!iso) return;
-    const d=daysUntil(iso); if(d==null||d<0) return;
-    if(!best||d<best.days) best={kind:f[0],label:f[1],iso:iso,days:d};
-  });
-  return best;
-}
-function schoolHasDate(s){ return !!(s&&SCHOOL_DATE_FIELDS.some(function(f){ return !!s[f[0]]; })); }
-/* 「あと3日」「今日」。あと0日という言い方はしない */
-function daysWord(d){ return d===0?'今日':'あと'+d+'日'; }
-function daysCls(d){ const AD=alertDays(); return d<=AD?'alert':d<=AD*2?'warn':'navy'; }
-function countdownBox(iso,school){
+function countdownBox(iso){
   const AD=alertDays();
-  const nx=schoolNextDate(school);
-  if(nx){
-    const dd=nx.days;
-    const box=el('div','countdown '+(dd<=AD?'urgent':dd<=AD*2?'soon':''));
-    const past=(school.deadline&&nx.kind!=='deadline'&&daysUntil(school.deadline)<0)
-      ? '<br><span style="color:var(--orange)">出願締切は過ぎています</span>' : '';
-    box.innerHTML=`<div><div class="num">${dd}</div><div class="small muted">日</div></div><div class="small muted">${esc(nx.label)}<br>${fmtDate(nx.iso)}${past}</div>`;
-    return box;
-  }
-  if(schoolHasDate(school)){
-    const box=el('div','countdown');
-    box.innerHTML='<div><div class="num" style="font-size:22px">終了</div></div><div class="small muted">登録した日程は<br>すべて過ぎました</div>';
-    return box;
-  }
   const dd=daysUntil(iso); const box=el('div','countdown '+(dd!=null&&dd<=AD?'urgent':dd!=null&&dd<=AD*2?'soon':''));
   if(dd==null){ box.innerHTML='<div><div class="num">—</div><div class="small muted">締切未設定</div></div>'; return box; }
   box.innerHTML=`<div><div class="num">${dd<0?'締切済':dd}</div>${dd>=0?'<div class="small muted">日</div>':''}</div><div class="small muted">出願締切<br>${fmtDate(iso)}</div>`;
@@ -1656,41 +1616,9 @@ function startStepsCard(){
   }
   return c;
 }
-/* 第一志望として画面に出す1校。
-   「第一志望に設定」を押していなくても、志望順位に第1を入れていればそちらを優先する
-   （設定していないと登録した順の1校目が「第一志望」として出てしまうため）。 */
-function primarySchool(){
-  const byId=S.schools.find(s=>s.id===S.meta.primarySchoolId);
-  if(byId) return byId;
-  const ranked=S.schools.filter(s=>+s.priority>0).sort((a,b)=>(+a.priority)-(+b.priority));
-  return ranked[0]||S.schools[0];
-}
-/* 併願校の直近の日程。第一志望のカウントダウンだけだと、併願校の締切に気づけない */
-function homeOtherDatesCard(primary){
-  const list=[];
-  (S.schools||[]).forEach(function(s){
-    if(primary&&s.id===primary.id) return;
-    const nx=schoolNextDate(s); if(nx) list.push({s:s,nx:nx});
-  });
-  if(!list.length) return null;
-  list.sort((a,b)=>a.nx.days-b.nx.days);
-  const c=el('div','card'); c.setAttribute('data-home-deadlines','1');
-  c.innerHTML='<div class="card-title"><span class="ic">'+ico('cal')+'</span><h3>ほかの志望校の直近の日程</h3></div>';
-  list.slice(0,3).forEach(function(x){
-    const r=el('div','list-row'); r.setAttribute('data-dsid',x.s.id||'');
-    r.innerHTML='<div style="flex:1"><b class="small">'+esc(shortName(x.s.name))+'</b>'
-      +'<div class="xsmall muted">'+esc(x.nx.label)+' '+fmtDate(x.nx.iso)+'</div></div>'
-      +'<span class="badge '+daysCls(x.nx.days)+'">'+daysWord(x.nx.days)+'</span>';
-    const b=el('button','btn sm','見る');
-    b.onclick=()=>{ go('schools'); setTimeout(()=>openSchool(x.s.id),50); };
-    r.appendChild(b); c.appendChild(r);
-  });
-  if(list.length>3) c.appendChild(el('p','xsmall muted','ほか'+(list.length-3)+'校の日程は志望校タブで確認できます。'));
-  return c;
-}
 function vHome(){
   const w=el('div','view');
-  const primary=primarySchool();
+  const primary=S.schools.find(s=>s.id===S.meta.primarySchoolId)||S.schools[0];
   if(!S.schools.length && !S.documents.length){
     const _n0=(S.profile&&S.profile.name||'').trim();
     w.appendChild(pageHead(_n0&&S.prefs&&S.prefs.greet!==false?_n0+'さん、ようこそ':'ようこそ','総合型選抜の準備を、ここで一気通貫に'));
@@ -1718,7 +1646,7 @@ function vHome(){
       <div style="font-size:17px;font-weight:800;color:var(--navy)">${esc(primary.name)}</div>
       <div class="small muted">${esc(primary.faculty||'')} ${esc(primary.dept||'')}</div>
       <hr class="sep">`;
-    hero.appendChild(countdownBox(primary.deadline,primary));
+    hero.appendChild(countdownBox(primary.deadline));
     const prog=el('div'); prog.style.marginTop='12px';
     const pr=schoolProgress(primary);
     prog.innerHTML=`<div class="small muted" style="display:flex;justify-content:space-between"><span>出願準備の進捗</span><b>${pr}%</b></div><div class="prog" style="margin-top:5px"><span style="width:${pr}%"></span></div>`;
@@ -1726,7 +1654,6 @@ function vHome(){
     const open=el('button','btn sm ghost','詳細を見る'); open.style.marginTop='10px'; open.onclick=()=>{go('schools');setTimeout(()=>openSchool(primary.id),50);}; hero.appendChild(open);
   } else { hero.innerHTML='<p class="small muted">第一志望が未設定です。志望校タブで設定できます。</p>'; }
   w.appendChild(hero);
-  { const oc=homeOtherDatesCard(primary); if(oc) w.appendChild(oc); }
 
   // 今日やること（逆算プラン）
   w.appendChild(homeTodayCard());
@@ -1760,40 +1687,25 @@ function vHome(){
   const side=el('div');
   const dcard=el('div','card');
   dcard.innerHTML='<div class="card-title"><span class="ic">'+ico('pen')+'</span><h3>作成中の書類</h3></div>';
-  /* 登録した順ではなく、日程が近い大学の書類から見せる。
-     志望校が決まっていない書類は締切が分からないので最後に回す（ありもしない期限は作らない）。 */
-  const allDrafts=S.documents.filter(d=>d.status!=='完成').map(function(d){
-    const nx=schoolNextDate(S.schools.find(x=>x.id===d.schoolId));
-    return {d:d,nx:nx,k:nx?nx.days:99999};
-  }).sort((a,b)=>a.k-b.k);
-  const drafts=allDrafts.slice(0,3);
+  const drafts=S.documents.filter(d=>d.status!=='完成').slice(0,3);
   if(!drafts.length) dcard.appendChild(el('p','small muted','作成中の書類はありません。'));
-  drafts.forEach(x=>{ const d=x.d; const r=el('div','list-row'); r.setAttribute('data-hdoc',d.id||''); const len=countJP(d.body);
-    const chip=x.nx?' <span class="badge '+daysCls(x.nx.days)+'">'+esc(x.nx.label)+' '+daysWord(x.nx.days)+'</span>':'';
-    r.innerHTML=`<div style="flex:1"><b class="small">${esc(d.title)}</b>${chip}<div class="xsmall muted">${esc(schoolName(d.schoolId)||'—')} ・ ${len}${d.charLimit?'/'+d.charLimit:''}字 <span class="badge ${d.status==='完成'?'ok':'warn'}">${esc(d.status)}</span></div></div>`;
-    const b=el('button','btn sm','開く'); b.onclick=()=>{go('documents');setTimeout(()=>openDocEditor(d.id),50);}; r.appendChild(b); dcard.appendChild(r); });
-  if(allDrafts.length>3) dcard.appendChild(el('p','xsmall muted','ほか'+(allDrafts.length-3)+'件は書類タブで確認できます。'));
+  drafts.forEach(d=>{ const r=el('div','list-row'); const len=countJP(d.body); r.innerHTML=`<div style="flex:1"><b class="small">${esc(d.title)}</b><div class="xsmall muted">${esc(schoolName(d.schoolId)||'—')} ・ ${len}${d.charLimit?'/'+d.charLimit:''}字 <span class="badge ${d.status==='完成'?'ok':'warn'}">${esc(d.status)}</span></div></div>`; const b=el('button','btn sm','開く'); b.onclick=()=>{go('documents');setTimeout(()=>openDocEditor(d.id),50);}; r.appendChild(b); dcard.appendChild(r); });
   side.appendChild(dcard);
 
   const icard=el('div','card');
   icard.innerHTML='<div class="card-title"><span class="ic">'+ico('mic')+'</span><h3>次の面接練習</h3></div>';
-  /* 苦手 → 未回答 の順。登録順のままだと、あとから「苦手」を付けた質問がホームに出てこない */
-  const allQ=S.interview.filter(q=>q.weak||!q.answer).slice().sort((a,b)=>(b.weak?1:0)-(a.weak?1:0));
-  const weakQ=allQ.slice(0,3);
+  const weakQ=S.interview.filter(q=>q.weak||!q.answer).slice(0,3);
   if(!weakQ.length) icard.appendChild(el('p','small muted','登録された質問はありません。'));
   weakQ.forEach(q=>{ const r=el('div','list-row'); r.innerHTML=`<div style="flex:1"><span class="small">${esc(q.question)}</span> ${q.weak?'<span class="badge alert">苦手</span>':'<span class="badge grey">未回答</span>'}</div>`; const b=el('button','btn sm','練習'); b.onclick=()=>{go('interview');setTimeout(()=>openInterview(q.id),50);}; r.appendChild(b); icard.appendChild(r); });
-  if(allQ.length>3) icard.appendChild(el('p','xsmall muted','ほか'+(allQ.length-3)+'問は面接タブで練習できます。'));
   side.appendChild(icard);
   grid.appendChild(side);
   w.appendChild(grid);
 
   const start=el('button','btn primary block','▶ 今日の対策を始める'); start.style.margin='4px 0 8px'; start.style.padding='14px';
-  start.onclick=()=>{ const t=tasksOn(todayISO()).filter(x=>!x.done)[0]||upcoming[0]; if(t){ openDaySheet(t.due||todayISO()); } else if(drafts[0]){go('documents');setTimeout(()=>openDocEditor(drafts[0].d.id),50);} else go('self'); };
+  start.onclick=()=>{ const t=tasksOn(todayISO()).filter(x=>!x.done)[0]||upcoming[0]; if(t){ openDaySheet(t.due||todayISO()); } else if(drafts[0]){go('documents');setTimeout(()=>openDocEditor(drafts[0].id),50);} else go('self'); };
   w.appendChild(start);
   return w;
 }
-/* 同じ日に日程が重なったときに、どれを代表の印にするか（小さい方が大事） */
-function stripRank(kind){ return kind==='deadline'?1:kind==='examDate'?2:kind==='entryStart'?3:4; }
 function homeTodayCard(){
   const today=todayISO();
   const c=el('div','card');
@@ -1816,14 +1728,10 @@ function homeTodayCard(){
   for(let i=0;i<7;i++){
     const iso=isoAdd(today,i); const dt=new Date(iso+'T00:00:00');
     const ts=tasksOn(iso), open=ts.filter(t=>!t.done).length;
-    /* 出願締切だけでなく、エントリー開始・試験日・合格発表にも印を付ける（カレンダーと同じ印）。
-       重なった日は大事な順（出願締切→試験日→エントリー開始→合格発表）の印を代表に出す */
-    const evs=schoolEventsOn(iso).slice().sort((a,b)=>stripRank(a.kind)-stripRank(b.kind));
-    const labels=[]; evs.forEach(e=>{ if(labels.indexOf(e.label)<0) labels.push(e.label); });
-    const cell=el('button','day-cell'+(i===0?' on':'')+(evs.length?' dl':''));
-    cell.innerHTML=`<span class="wd">${wd[dt.getDay()]}</span><span class="dn">${dt.getDate()}</span>`+(evs.length?`<span class="pin">${evs[0].icon}</span>`:(open?`<span class="cnt">${open}</span>`:'<span class="cnt none">–</span>'));
-    if(labels.length) cell.setAttribute('data-dayev',labels.join(','));
-    cell.title=evs.map(e=>e.icon+' '+e.school.name+' の'+e.label).concat(ts.map(t=>t.title)).join('\n')||'予定なし';
+    const dl=S.schools.some(sc=>sc.deadline===iso);
+    const cell=el('button','day-cell'+(i===0?' on':'')+(dl?' dl':''));
+    cell.innerHTML=`<span class="wd">${wd[dt.getDay()]}</span><span class="dn">${dt.getDate()}</span>`+(dl?'<span class="pin">📮</span>':(open?`<span class="cnt">${open}</span>`:'<span class="cnt none">–</span>'));
+    cell.title=ts.map(t=>t.title).join('\n')||'予定なし';
     cell.onclick=()=>openDaySheet(iso);
     strip.appendChild(cell);
   }
@@ -1834,23 +1742,11 @@ function homeTodayCard(){
   row.append(cal,re); c.appendChild(row);
   return c;
 }
-const ADVICE_BY_KIND={
-  entryStart:'エントリー（出願受付）の開始日です。登録方法と必要書類を、募集要項の原本で確かめておきましょう。',
-  deadline:'今週は書類の推敲と面接練習に集中しましょう。',
-  examDate:'面接・小論文の練習を仕上げる時期です。当日の持ち物と会場もあわせて確認しておきましょう。',
-  resultDate:'結果を待つあいだも、併願校の準備を進めておくと落ち着いて過ごせます。'
-};
 function homeAdvice(primary){
-  /* 出願締切だけを見ていると、出願が済んだとたんに「経験の棚卸しから」に戻ってしまっていた。
-     次に来る日程（試験日・合格発表など）に自動で切り替える */
-  const nx=schoolNextDate(primary);
+  const dd=primary?daysUntil(primary.deadline):null;
   const draft=S.documents.find(d=>d.status!=='完成');
   const bits=[];
-  if(nx&&nx.days<=90){
-    bits.push(nx.days===0
-      ? `${esc(nx.label)}は<b>今日です</b>。${ADVICE_BY_KIND[nx.kind]||''}`
-      : `${esc(nx.label)}まで<b>あと${nx.days}日</b>です。${ADVICE_BY_KIND[nx.kind]||''}`);
-  }
+  if(dd!=null&&dd>=0&&dd<=30) bits.push(`出願まで残り<b>${dd}日</b>です。今週は書類の推敲と面接練習に集中しましょう。`);
   if(draft){ const a=analyzeText(draft.body,{charLimit:draft.charLimit,school:S.schools.find(s=>s.id===draft.schoolId),question:draft.question}); if(a.priorities.length) bits.push(`「${esc(draft.title)}」は、まず<b>${esc(a.priorities[0].title)}</b>から直すと良さそうです。`); }
   if(!bits.length) bits.push('経験の棚卸し（自己分析・活動実績）が、書類と面接の土台になります。少しずつ言葉にしていきましょう。');
   bits.push('※AIは合否を判断しません。最後は必ずあなた自身の言葉で確認してください。');
@@ -3127,9 +3023,6 @@ window.addEventListener('pagehide',flushAutosave);
 window.addEventListener('beforeunload',flushAutosave);
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') flushAutosave(); });
 
-/* オブジェクトの浅いコピー（古いiOS Safariで動かない {...obj} を使わないため） */
-function shallowCopy(o){ const r={}; if(o) Object.keys(o).forEach(function(k){ r[k]=o[k]; }); return r; }
-
 function openDocEditor(id,tab){
   const d=S.documents.find(x=>x.id===id); if(!d) return;
   openSheet(d.title,(b)=>{
@@ -3140,96 +3033,19 @@ function openDocEditor(id,tab){
     tabs.forEach(([k,label])=>{ const bt=el('button',null,label); bt.onclick=()=>{seg.querySelectorAll('button').forEach(x=>x.classList.remove('on'));bt.classList.add('on');renderPane(k);}; seg.appendChild(bt); });
     b.appendChild(seg); b.appendChild(pane);
     function renderPane(k){
-      /* タブを切りかえると本文の入力欄ごと消えてしまうので、消す前に書きかけを確定させる。
-         （paneAI 側で拾おうとしても、そのときには pane が空になっていて間に合わない） */
-      const bt=pane.querySelector('textarea[data-body]');
-      if(bt&&bt.value!==(d.body||'')){ d.body=bt.value; d.updatedAt=Date.now(); save(); }
-      try{ flushAutosave(); }catch(e){}
       pane.innerHTML='';
       if(k==='edit') paneEdit(); else if(k==='ai') paneAI(); else if(k==='fb') paneFB(); else paneVer();
     }
     function paneEdit(){
-      /* 設問はあとから入力されることがあるので、枠は always 用意して中身だけ差し替える */
-      const qb=el('div','note info'); pane.appendChild(qb);
-      function paintQuestion(){ qb.style.display=d.question?'':'none'; qb.innerHTML='<b>設問：</b>'+nl2br(d.question||''); }
-      paintQuestion();
+      if(d.question){ const qb=el('div','note info'); qb.innerHTML='<b>設問：</b>'+nl2br(d.question); pane.appendChild(qb); }
       const stSel=fieldSelect('ステータス',d.status,['下書き','修正中','添削待ち','完成']); stSel.get=stSel.get; stSel.querySelector('select').onchange=e=>{d.status=e.target.value;touchDoc(d);}; pane.appendChild(stSel);
       pane.appendChild(el('p','xsmall muted','「完成」にするまで、逆算プランに「推敲する」予定が繰り返し入り続けます。書類は一度では仕上がらないので、少しずつ何度も直していきましょう。'));
-      const tySel=fieldSelect('種別',d.type||'志望理由書',DOC_TYPES); tySel.querySelector('select').onchange=e=>{d.type=e.target.value;touchDoc(d);paintDocMeta();}; pane.appendChild(tySel);
-      /* 志望校はあとからでも結びつけられる（未設定だと「提出書類の取り組み状況」に出てこない） */
-      const scOpts=[{value:'',label:'— 未設定 —'}].concat((S.schools||[]).map(function(s){ return {value:s.id,label:s.name+(s.faculty?' '+s.faculty:'')}; }));
-      const scSel=fieldSelect('志望校',d.schoolId||'',scOpts);
-      scSel.querySelector('select').onchange=function(e){ d.schoolId=e.target.value||null; touchDoc(d); paintDocMeta(); try{ render(); }catch(x){} };
-      pane.appendChild(scSel);
-      const scNote=el('p','xsmall muted'); scNote.style.margin='-6px 0 10px'; pane.appendChild(scNote);
-      function paintDocMeta(){
-        const s=d.schoolId?(S.schools||[]).filter(function(x){ return x.id===d.schoolId; })[0]:null;
-        if(!s){
-          scNote.className='xsmall'; scNote.style.color=(S.schools&&S.schools.length)?'var(--alert)':'';
-          scNote.innerHTML=(S.schools&&S.schools.length)
-            ?'⚠️ 志望校が未設定です。設定すると、志望校ごとの「提出書類の取り組み状況」に反映されます。'
-            :'志望校を登録すると、ここで結びつけられます。';
-          return;
-        }
-        let labels=[]; try{ labels=requiredDocs(s)||[]; }catch(x){}
-        const hit=labels.filter(function(L){ return docMatchesLabel(d,L); });
-        scNote.className='xsmall muted'; scNote.style.color='';
-        scNote.innerHTML=hit.length
-          ?('「'+esc(shortName(s.name))+'」の必要書類 <b>'+esc(hit.join('・'))+'</b> として取り組み状況に反映されます。')
-          :('この書類は「'+esc(shortName(s.name))+'」の必要書類'+(labels.length?('（'+esc(labels.slice(0,4).join('・'))+(labels.length>4?' ほか':'')+'）'):'')+'のどれにも当てはまっていません。取り組み状況に入れるには、上の「種別」かタイトルを書類名に合わせてください。');
-      }
-      paintDocMeta();
-      /* タイトルと設問はこれまで作成時にしか入れられなかった。
-         設問は募集要項を見て知るのがたいてい書き始めたあとで、AI分析にもそのまま渡っている。
-         タイトルは必要書類との突き合わせ（docMatchesLabel）に使われるので、直せないと案内どおりに直せない。
-         本文の入力欄を画面外へ押し出さないよう、たたんだカードに入れる。 */
-      tgCard(pane,{icon:'📝',title:'タイトル・設問を直す',key:'doc.meta',open:false},function(mb){
-        const tiF=fieldText('書類タイトル',d.title,null,{placeholder:'例：〇〇大学 志望理由書 第2稿'});
-        const tiIn=tiF._input;
-        const head=function(){ return document.querySelector('#sheet .sheet-head h3'); };
-        tiIn.addEventListener('input',function(){ const h=head(); if(h) h.textContent=tiIn.value||d.title; });
-        const commitTitle=function(){
-          const v=tiIn.value.trim();
-          if(!v){ tiIn.value=d.title; const h=head(); if(h) h.textContent=d.title; toast('タイトルは空にできません','warn'); return; }
-          if(v===d.title) return;
-          d.title=v; touchDoc(d); paintDocMeta(); try{ render(); }catch(x){}
-        };
-        tiIn.addEventListener('change',commitTitle); tiIn.addEventListener('blur',commitTitle);
-        mb.appendChild(tiF);
-        mb.appendChild(el('p','xsmall muted','必要書類の名前（例：志望理由書）をタイトルか種別に入れておくと、「提出書類の取り組み状況」に結びつきます。'));
-        const qF=fieldText('設問（募集要項に書かれている問い）',d.question,null,{area:true,rows:3,placeholder:'例：あなたが学びたいことと、その理由を述べてください'});
-        const qIn=qF._input;
-        const commitQ=function(){
-          if(qIn.value===(d.question||'')) return;
-          d.question=qIn.value; touchDoc(d); paintQuestion();
-        };
-        qIn.addEventListener('change',commitQ); qIn.addEventListener('blur',commitQ);
-        mb.appendChild(qF);
-        mb.appendChild(el('p','xsmall muted','設問を入れておくと、AI分析が「問いに答えられているか」まで見ます。募集要項の原本どおりに写してください。'));
-      });
-      const ta=el('textarea','input'); ta.rows=14; ta.value=d.body||''; ta.setAttribute('aria-label','本文'); ta.setAttribute('data-body','1'); ta.style.minHeight='240px'; pane.appendChild(ta);
-      /* 文字数の表示と、あとから直せる文字数制限 */
-      const cntRow=el('div'); cntRow.style.cssText='display:flex;align-items:center;gap:8px;margin-top:4px';
-      const cnt=el('div','counter'); cnt.style.flex='1'; cntRow.appendChild(cnt);
-      const limWrap=el('label','xsmall muted'); limWrap.style.cssText='display:inline-flex;align-items:center;gap:4px;flex:none;white-space:nowrap';
-      limWrap.appendChild(el('span',null,'制限'));
-      const limIn=el('input','input'); limIn.type='number'; limIn.min='0'; limIn.setAttribute('inputmode','numeric');
-      limIn.placeholder='未設定'; limIn.value=d.charLimit?String(d.charLimit):''; limIn.setAttribute('aria-label','文字数制限');
-      limIn.style.cssText='width:78px;padding:4px 6px;border-radius:8px;font-size:12.5px;text-align:right';
-      limWrap.appendChild(limIn); limWrap.appendChild(el('span',null,'字'));
-      cntRow.appendChild(limWrap); pane.appendChild(cntRow);
+      const tySel=fieldSelect('種別',d.type||'志望理由書',DOC_TYPES); tySel.querySelector('select').onchange=e=>{d.type=e.target.value;touchDoc(d);}; pane.appendChild(tySel);
+      const ta=el('textarea','input'); ta.rows=14; ta.value=d.body||''; ta.setAttribute('aria-label','本文'); ta.style.minHeight='240px'; pane.appendChild(ta);
+      const cnt=el('div','counter'); pane.appendChild(cnt);
       pane.appendChild(el('p','xsmall muted','本文は直接入力のほか、下の「📎 ファイルを読み込む」でPDF・Word・パワポ(.pptx)・テキストの内容を取り込めます（パワポはスライドごとに読み取り、種別を「プレゼン資料」にするとAIがスライド構成まで添削）。'+(d.sourceFile?(' ／ 取込元：'+d.sourceFile):'')));
-      const updateCnt=()=>{ const len=countJP(ta.value); let cls='counter';
-        if(d.charLimit){ if(len>d.charLimit)cls+=' over'; else if(len>d.charLimit*0.9)cls+=' near'; }
-        cnt.className=cls;
-        cnt.textContent=len+(d.charLimit
-          ?(' / '+d.charLimit+'字'+(len>d.charLimit?('（'+(len-d.charLimit)+'字 超過）'):('（あと'+(d.charLimit-len)+'字）')))
-          :' 字');
-      };
+      const updateCnt=()=>{ const len=countJP(ta.value); let cls='counter'; if(d.charLimit){ if(len>d.charLimit)cls+=' over'; else if(len>d.charLimit*0.9)cls+=' near'; } cnt.className=cls; cnt.textContent=`${len}${d.charLimit?' / '+d.charLimit+'字':' 字'}`+(d.charLimit&&len>d.charLimit?`（${len-d.charLimit}字 超過）`:''); };
       updateCnt();
-      limIn.addEventListener('input',function(){ const v=parseInt(limIn.value,10); d.charLimit=(isFinite(v)&&v>0)?v:0; updateCnt(); });
-      limIn.addEventListener('change',function(){ touchDoc(d); });
-      limIn.addEventListener('blur',function(){ touchDoc(d); });
       const docSt=saveStatusEl(); pane.appendChild(docSt);
       ta.addEventListener('input',updateCnt);
       const saveDoc=bindAutosave(ta,'doc:'+d.id,v=>{ d.body=v; d.updatedAt=Date.now(); },docSt,{delay:700});
@@ -3239,17 +3055,13 @@ function openDocEditor(id,tab){
       const row=el('div','btn-row'); row.style.marginTop='10px';
       const imp=el('button','btn sm teal','📎 ファイルを読み込む（PDF/Word/パワポ）'); imp.onclick=()=>pickFile('.pdf,.docx,.pptx,.txt,.md,.csv',(text,meta)=>{ ta.value = ta.value.trim() ? (ta.value.trim()+'\n\n'+text) : text; updateCnt(); d.body=ta.value; d.sourceFile=meta.name||d.sourceFile; touchDoc(d); toast('「'+(meta.name||'ファイル')+'」を読み込みました','ok'); });
       const saveV=el('button','btn sm','この内容をバージョン保存'); saveV.onclick=()=>{ d.body=ta.value; d.versions=d.versions||[]; d.versions.unshift({ts:Date.now(),body:ta.value}); touchDoc(d); toast('バージョンを保存しました','ok'); };
-      const dup=el('button','btn sm ghost','この下書きを複製'); dup.onclick=()=>{ const c=shallowCopy(d); c.id=uid(); c.title=d.title+'（複製）'; c.versions=[]; c.feedbacks=(d.feedbacks||[]).map(function(x){ return shallowCopy(x); }); c.updatedAt=Date.now(); c.body=ta.value; S.documents.push(c); save(); toast('複製しました','ok'); closeSheet(); go('documents'); };
+      const dup=el('button','btn sm ghost','この下書きを複製'); dup.onclick=()=>{ const c={...d,id:uid(),title:d.title+'（複製）',versions:[],feedbacks:(d.feedbacks||[]).map(x=>({...x})),updatedAt:Date.now(),body:ta.value}; S.documents.push(c); save(); toast('複製しました','ok'); closeSheet(); go('documents'); };
       const delD=el('button','btn sm danger','この書類を削除'); delD.onclick=()=>deleteDoc(d.id,()=>{ try{ closeSheet(); }catch(e){} });
       row.append(imp,saveV,dup,delD); pane.appendChild(row);
       const nb=fieldText('メモ（段落メモ・自分用）',d.notes,null,{area:true,rows:2}); nb.querySelector('textarea').onchange=e=>{d.notes=e.target.value;touchDoc(d);}; pane.appendChild(nb);
     }
     function paneAI(){
-      /* 本文は renderPane がタブを切りかえる前に確定させている。ここは念のためのもう一度。
-         入力欄は data-body で名指しする（「最初の textarea」だと、編集タブに設問やメモの
-         入力欄が増えたときに本文以外を本文として拾ってしまう）。 */
-      const _bta=$('#overlay').querySelector('textarea[data-body]');
-      if(_bta&&_bta.value) d.body=_bta.value;
+      d.body=$('#overlay').querySelector('textarea')?.value||d.body; // 念のため最新
       const school=S.schools.find(s=>s.id===d.schoolId);
       const a=analyzeText(d.body,{charLimit:d.charLimit,school,question:d.question,hasPolicy:!!(school&&school.policy),storyLinked:!!S.story.origin,docType:d.type});
       const aiCtx={charLimit:d.charLimit,school,question:d.question,hasPolicy:!!(school&&school.policy),docType:d.type,doc:d};
@@ -3347,14 +3159,212 @@ function showGenInterview(d){
    面接対策
    ========================================================================= */
 const COMMON_Q=['なぜこの大学を志望しましたか。','なぜこの学部でなければならないのですか。','活動の中で最も苦労したことは何ですか。','あなた自身が行ったことを具体的に教えてください。','入学後に何を研究したいですか。','最近関心を持ったニュースは何ですか。','不合格だった場合はどうしますか。','あなたの強みと弱みを教えてください。','高校生活で最も成長したことは何ですか。','10年後、どんな自分でありたいですか。'];
+/* ============================================================
+   模擬面接モード
+   質問を声で読み上げ → 時間を計って声で答える → まとめて講評。
+   読み上げも音声入力もブラウザの機能なので、AI代はかかりません。
+   （最後の講評だけ、加入者はAIを1回使います）
+   ============================================================ */
+function ttsReady(){ return typeof window!=='undefined' && 'speechSynthesis' in window; }
+function speak(text,onend){
+  if(!ttsReady()){ if(onend) setTimeout(onend,0); return; }
+  try{
+    window.speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(String(text||''));
+    u.lang='ja-JP'; u.rate=0.95;
+    try{
+      const vs=window.speechSynthesis.getVoices()||[];
+      const ja=vs.filter(v=>/^ja/i.test(v.lang||''));
+      if(ja.length) u.voice=ja[0];
+    }catch(e){}
+    let done=false;
+    const fin=()=>{ if(done)return; done=true; if(onend)onend(); };
+    u.onend=fin; u.onerror=fin;
+    window.speechSynthesis.speak(u);
+    /* 読み上げが始まらない端末でも進めるように、保険をかける */
+    setTimeout(fin, Math.min(20000, 2500+String(text||'').length*120));
+  }catch(e){ if(onend) setTimeout(onend,0); }
+}
+function stopSpeak(){ try{ if(ttsReady()) window.speechSynthesis.cancel(); }catch(e){} }
+
+/* 出題する質問を集める */
+function mockQuestions(n){
+  const out=[];
+  const push=(q,src)=>{ q=String(q||'').trim();
+    if(q && !out.some(x=>x.q===q)) out.push({q:q,src:src}); };
+  /* ① 自分で登録した質問（苦手なものを優先） */
+  (S.interview||[]).filter(x=>x.weak).forEach(x=>push(x.question,'あなたが「苦手」にした質問'));
+  (S.interview||[]).forEach(x=>push(x.question,'あなたが登録した質問'));
+  /* ② 書類から自動で作った質問 */
+  (S.documents||[]).forEach(d=>{
+    try{ genInterviewQuestions(d).forEach(x=>push(x.q,'あなたの「'+(d.title||'書類')+'」から')); }catch(e){}
+  });
+  /* ③ よくある質問 */
+  (typeof COMMON_Q!=='undefined'?COMMON_Q:[]).forEach(q=>push(q,'総合型選抜でよく聞かれる質問'));
+  return out.slice(0,Math.max(1,n||5));
+}
+
+function openMockInterview(){
+  const st={n:5,sec:60,speakOn:ttsReady()};
+  openSheet('模擬面接',(b,close)=>{
+    b.appendChild(el('div','note info','本番と同じように、<b>質問が声で読み上げられます。</b>声に出して答えてください。答えは自動で文字になり、面接タブに保存されます。'));
+
+    const cfg=el('div','card tight');
+    cfg.innerHTML='<div class="small"><b>設定</b></div>';
+    const mk=(label,vals,cur,onpick)=>{
+      const r=el('div'); r.style.marginTop='8px';
+      r.innerHTML='<div class="xsmall muted">'+label+'</div>';
+      const row=el('div','btn-row'); row.style.marginTop='4px';
+      vals.forEach(([v,lb])=>{
+        const bt=el('button','btn sm '+(cur()===v?'primary':'ghost'),lb);
+        bt.onclick=()=>{ onpick(v); [...row.children].forEach(c=>c.className='btn sm ghost'); bt.className='btn sm primary'; };
+        row.appendChild(bt);
+      });
+      r.appendChild(row); return r;
+    };
+    cfg.appendChild(mk('質問の数',[[3,'3問'],[5,'5問'],[7,'7問']],()=>st.n,v=>st.n=v));
+    cfg.appendChild(mk('1問あたりの持ち時間',[[60,'1分'],[90,'1分30秒'],[120,'2分']],()=>st.sec,v=>st.sec=v));
+    if(ttsReady()) cfg.appendChild(mk('質問の読み上げ',[[true,'する'],[false,'しない']],()=>st.speakOn,v=>st.speakOn=v));
+    b.appendChild(cfg);
+
+    const qs=mockQuestions(st.n);
+    if(!qs.length){
+      b.appendChild(el('div','note w','出題する質問がありません。「よくある質問から追加」で質問を入れるか、書類を1つ作ってください。'));
+      return;
+    }
+    const prev=el('p','xsmall muted','いま出題できる質問：'+mockQuestions(99).length+'問（苦手にした質問から先に出ます）');
+    b.appendChild(prev);
+
+    const go=el('button','btn primary block','はじめる'); go.style.marginTop='12px';
+    go.onclick=()=>{ close(); runMockInterview(mockQuestions(st.n), st); };
+    b.appendChild(go);
+    b.appendChild(el('p','xsmall muted','※ 声を使うので、周りに人がいないところでどうぞ。うまく聞き取れないときは、あとから文字で直せます。'));
+  },{expandable:true});
+}
+
+function runMockInterview(qs,st){
+  let i=0;
+  const answers=qs.map(()=>'');
+  let timer=null, rec=null, recording=false, left=st.sec;
+
+  const cleanup=()=>{ stopSpeak(); if(timer){clearInterval(timer);timer=null;}
+    if(rec){ try{rec.stop();}catch(e){} rec=null; } recording=false; };
+
+  const step=()=>{
+    cleanup();
+    if(i>=qs.length){ finish(); return; }
+    const cur=qs[i];
+    left=st.sec;
+    openSheet('模擬面接　'+(i+1)+' / '+qs.length,(b,close)=>{
+      const bar=el('div','card tight');
+      bar.innerHTML='<div class="xsmall muted">'+esc(cur.src||'')+'</div>'
+        +'<div style="font-size:18px;font-weight:700;margin-top:6px;line-height:1.6">'+esc(cur.q)+'</div>';
+      b.appendChild(bar);
+
+      const tm=el('div','card tight'); tm.style.cssText+=';text-align:center;margin-top:10px';
+      const num=el('div'); num.style.cssText='font-size:32px;font-weight:800;color:var(--navy);font-variant-numeric:tabular-nums';
+      const note=el('div','xsmall muted');
+      tm.append(num,note); b.appendChild(tm);
+      const paint=()=>{
+        const m=Math.floor(left/60), sc=left%60;
+        num.textContent=m+':'+String(sc).padStart(2,'0');
+        num.style.color = left<=10 ? 'var(--alert)' : 'var(--navy)';
+        note.textContent = left>0 ? '声に出して答えてください' : '時間です。次に進んでください';
+      };
+      paint();
+
+      const ta=el('textarea','input'); ta.rows=5; ta.value=answers[i]||'';
+      ta.placeholder='ここに答えが文字になって入ります（あとから直せます）';
+      ta.oninput=()=>{ answers[i]=ta.value; };
+      const vt=el('div'); vt.appendChild(voiceTools(ta,{onchange:v=>{answers[i]=v;}}));
+      b.appendChild(el('p','xsmall muted','答え'));
+      b.appendChild(vt); b.appendChild(ta);
+
+      const row=el('div','btn-row'); row.style.marginTop='12px';
+      const next=el('button','btn primary',(i===qs.length-1)?'終わって講評を見る':'次の質問へ');
+      next.onclick=()=>{ answers[i]=ta.value; i++; step(); };
+      const again=el('button','btn ghost sm','もう一度読み上げる');
+      again.onclick=()=>speak(cur.q);
+      const quit=el('button','btn ghost sm','やめる');
+      quit.onclick=()=>{ cleanup(); close(); };
+      row.append(next,again,quit); b.appendChild(row);
+
+      /* 時間を計る */
+      timer=setInterval(()=>{ if(left>0){ left--; paint(); } },1000);
+
+      /* 質問を読み上げてから計測を始める演出（読み上げ中は待つ） */
+      if(st.speakOn){
+        left=st.sec; paint();
+        clearInterval(timer); timer=null;
+        note.textContent='読み上げています…';
+        speak(cur.q,()=>{ timer=setInterval(()=>{ if(left>0){ left--; paint(); } },1000); paint(); });
+      }
+    },{expandable:true});
+  };
+
+  const finish=()=>{
+    cleanup();
+    /* 面接タブに保存する（同じ質問があれば上書き） */
+    let saved=0;
+    qs.forEach((x,k)=>{
+      const a=(answers[k]||'').trim(); if(!a) return;
+      const hit=(S.interview||[]).find(y=>y.question===x.q);
+      if(hit){ hit.answer=a; hit.updatedAt=Date.now(); }
+      else { S.interview.push({id:uid(),question:x.q,answer:a,category:'模擬面接',updatedAt:Date.now()}); }
+      saved++;
+    });
+    save();
+
+    openSheet('模擬面接のふりかえり',(b,close)=>{
+      b.appendChild(el('div','note ok','おつかれさまでした。答えた'+saved+'問を面接タブに保存しました。'));
+      qs.forEach((x,k)=>{
+        const a=(answers[k]||'').trim();
+        const c=el('div','card tight'); c.style.marginTop='8px';
+        c.innerHTML='<div class="small" style="font-weight:700">'+esc(x.q)+'</div>'
+          +'<div class="xsmall muted" style="margin-top:4px">'+(a?esc(a):'（答えていません）')+'</div>'
+          +(a?'<div class="xsmall muted" style="margin-top:4px">'+countJP(a)+'字　'
+             +(countJP(a)<60?'短すぎます。具体的な出来事を1つ足しましょう':countJP(a)>500?'長すぎます。1分で言い切れる量に絞りましょう':'ちょうどよい長さです')+'</div>':'');
+        b.appendChild(c);
+      });
+
+      const anyAns=answers.some(a=>(a||'').trim());
+      if(anyAns){
+        if(aiReady()){
+          const bt=el('button','btn primary block','AIにまとめて講評してもらう'); bt.style.marginTop='12px';
+          bt.onclick=()=>{
+            const txt=qs.map((x,k)=>'【質問】'+x.q+'\n【回答】'+((answers[k]||'').trim()||'（未回答）')).join('\n\n');
+            aiTextSheet('模擬面接の講評','答え全体を通して、具体性・一貫性・簡潔さ・本人らしさの観点でふりかえります。',
+              ()=>runReflectAI('模擬面接（'+qs.length+'問）',txt));
+          };
+          b.appendChild(bt);
+          const q=quotaBar(); if(q){ q.style.marginTop='8px'; b.appendChild(q); }
+        } else {
+          const pc=proCard('答え全体をAIが読んで、具体性・一貫性・簡潔さ・本人らしさの観点でふりかえります。');
+          if(pc){ pc.style.marginTop='12px'; b.appendChild(pc); }
+        }
+      }
+      const go2=el('button','btn ghost block','面接タブで見る'); go2.style.marginTop='8px';
+      go2.onclick=()=>{ close(); go('interview'); };
+      b.appendChild(go2);
+      const again=el('button','btn ghost sm block','もう一度やる'); again.style.marginTop='8px';
+      again.onclick=()=>{ close(); openMockInterview(); };
+      b.appendChild(again);
+    },{expandable:true});
+  };
+
+  step();
+}
 function vInterview(){
   const w=el('div','view');
   const add=el('button','btn primary sm','＋ 質問追加'); add.onclick=()=>editInterview(null);
   w.appendChild(pageHead('面接対策','書類の内容と一貫した回答を準備',add));
   { const pc=proCard('提出書類の内容から、面接官が確認しそうな質問をAIが作ります。答えた内容のふりかえりもできます。');
     if(pc) w.appendChild(pc); }
-  const bar=el('div','btn-row'); bar.style.marginBottom='10px';
-  const lib=el('button','btn sm','📋 よくある質問から追加'); lib.onclick=()=>showQBank(); bar.appendChild(lib);
+  { const mb=el('button','btn primary block','🎙 模擬面接をはじめる');
+    mb.style.marginBottom='10px'; mb.onclick=()=>openMockInterview(); w.appendChild(mb);
+    w.appendChild(el('p','xsmall muted','質問が声で読み上げられます。声に出して答えると、そのまま文字になって保存されます。')); }
+  const bar=el('div','btn-row'); bar.style.margin='10px 0';
+  const lib=el('button','btn sm','よくある質問から追加'); lib.onclick=()=>showQBank(); bar.appendChild(lib);
   w.appendChild(bar);
   const seg=el('div','seg'); seg.style.marginBottom='12px';
   const filters=[['all','すべて'],['weak','苦手'],['fav','お気に入り'],['unans','未回答']];
@@ -3623,12 +3633,8 @@ function maybeOnboard(){
    利用者には「前に開いたときより新しくなっていたら」だけ知らせます。 */
 const CHANGELOG=[
 /*NEWEST*/
-{v:'2026.08.08-5',d:'2026-08-08',t:'今回見たのは「タスク・締切」の画面です。 タスクの編集画面で、締切日の欄のすぐ下に'},
-{v:'2026.08.08-4',d:'2026-08-08',t:'今回も「提出書類」のページを見直しました。バージョンは **2026.08.08-4** です。 今回いちばん大事な直しです。書類の本文は、打つのをやめて少ししてから自動で保存される仕組みでした。'},
-{v:'2026.08.08-3',d:'2026-08-08',t:'今回は「提出書類」のページを見直しました。バージョンは **2026.08.08** です。 これがいちばん大きな変更です。これまで書類の志望校は、新しく作るときにしか選べませんでした。'},
-{v:'2026.08.08-2',d:'2026-08-08',t:'今回は「提出書類」のページを見直しました。バージョンは **2026.08.08** です。 これがいちばん大きな変更です。これまで書類の志望校は、新しく作るときにしか選べませんでした。'},
-{v:'2026.08.08',d:'2026-08-08',t:'今回は「提出書類」のページを見直しました。バージョンは **2026.08.08** です。 これがいちばん大きな変更です。これまで書類の志望校は、新しく作るときにしか選べませんでした。'},
-{v:'2026.08.11-32',d:'2026-08-07',t:'絵文字をやめて、線で描いたアイコンに統一しました。お知らせを右上のベルにまとめ、未読には NEW が付きます。'},
+{v:'2026.08.11-34',d:'2026-08-08',t:'模擬面接モードを追加しました。質問が声で読み上げられ、声で答えると自動で文字になります。'},
+{v:'2026.08.11-33',d:'2026-08-07',t:'絵文字をやめて、線で描いたアイコンに統一しました。お知らせを右上のベルにまとめ、未読には NEW が付きます。'},
 {v:'2026.08.11-15',d:'2026-08-07',t:'APIキーの用意が不要になりました。受験生パックに加入すると、設定なしでAIが使えます。'},
 {v:'2026.08.11-13',d:'2026-08-07',t:'「大学をさがす」を追加しました。書いた言葉から近い分野を出します。'},
 {v:'2026.08.11-12',d:'2026-08-07',t:'書類を削除できるようにしました。ホームに「はじめの3ステップ」を追加しました。'}
@@ -4442,56 +4448,15 @@ function applyPlan(items,mode){
 }
 function hasPlan(){ return S.tasks.some(t=>t.auto); }
 function tasksOn(iso){ return S.tasks.filter(t=>t.due===iso); }
-/* ---- 未完了タスクの並びを「時期」で区切る ----------------------------------
-   締切順（due 昇順・期限なしは末尾）に並べると、下の5つは必ずこの順に固まる。
-   だから並び順は一切変えずに、切り替わったところへ見出しを挿すだけで区切れる。 */
-const TASK_GROUPS=[
-  ['over','⏰ 期限を過ぎた','alert'],
-  ['today','📌 今日','teal'],
-  ['week','7日以内','warn'],
-  ['later','それ以降','grey'],
-  ['none','期限なし','grey']
-];
-function taskGroup(t){
-  if(!t||!t.due) return 'none';
-  const today=todayISO();
-  if(t.due<today) return 'over';
-  if(t.due===today) return 'today';
-  return t.due<=isoAdd(today,7)?'week':'later';
-}
-function taskGroupCounts(){
-  const c={over:0,today:0,week:0,later:0,none:0};
-  ((S&&S.tasks)||[]).forEach(t=>{ if(!t.done) c[taskGroup(t)]++; });
-  return c;
-}
-function taskGroupHead(key,n,first){
-  const g=TASK_GROUPS.filter(x=>x[0]===key)[0]||['none','その他','grey'];
-  const h=el('div','tgh'+(first?' f':'')); h.setAttribute('data-tgh',key);
-  h.innerHTML='<span class="tgh-t">'+g[1]+'</span><span class="badge '+g[2]+'" data-tkg="'+key+'">'+n+'件</span>';
-  return h;
-}
-/* ---- 志望校の重要日程を日付から引く（カレンダー・その日のプランで使う） ---- */
-const SCHOOL_EVENTS=[['entryStart','✏️','エントリー開始'],['deadline','📮','出願締切'],['examDate','📝','試験日'],['resultDate','🎉','合格発表']];
-function schoolEventsOn(iso){
-  const out=[];
-  if(!iso||!S||!S.schools) return out;
-  S.schools.forEach(s=>{ SCHOOL_EVENTS.forEach(e=>{ if(s[e[0]]&&s[e[0]]===iso) out.push({school:s,kind:e[0],icon:e[1],label:e[2]}); }); });
-  return out;
-}
-function schoolEventIcons(evs){
-  const ic=[]; (evs||[]).forEach(e=>{ if(ic.indexOf(e.icon)<0) ic.push(e.icon); }); return ic;
-}
 function openDaySheet(iso){
   openSheet(fmtDate(iso)+' のプラン',(b)=>{
     const ts=tasksOn(iso);
-    const evs=schoolEventsOn(iso);
-    evs.forEach(e=>{ const n=el('div','note'); n.innerHTML=e.icon+' <b>'+esc(e.school.name)+' の'+esc(e.label)+'</b>です。'; b.appendChild(n); });
+    const dls=S.schools.filter(s=>s.deadline===iso);
+    dls.forEach(s=>{ const n=el('div','note'); n.innerHTML='📮 <b>'+esc(s.name)+' の出願締切</b>です。'; b.appendChild(n); });
     if(!ts.length){ b.appendChild(el('p','small muted','この日に予定はありません。')); }
     ts.forEach(t=>{ const c=el('div','card tight'); c.appendChild(taskRow(t,false)); if(t.why){ const w=el('p','xsmall muted','💡 '+t.why); w.style.margin='2px 0 0 30px'; c.appendChild(w);} b.appendChild(c); });
     const addb=el('button','btn sm block','＋ この日にタスクを追加'); addb.style.marginTop='8px';
-    /* 日付は editTask に直接わたす。以前は開いたあと 80ms 後に input を探して代入していたので、
-       端末が遅いと日付が入らないまま「保存」できてしまった */
-    addb.onclick=()=>{ closeSheet(); setTimeout(()=>editTask(null,iso),120); };
+    addb.onclick=()=>{ closeSheet(); setTimeout(()=>{ editTask(null); setTimeout(()=>{ const inp=document.querySelector('#sheet input[type=date]'); if(inp)inp.value=iso; },80); },120); };
     b.appendChild(addb);
   });
 }
@@ -4625,16 +4590,11 @@ function requiredDocs(s){
   const i=out.indexOf('志望理由書'); if(i>0){ out.splice(i,1); out.unshift('志望理由書'); }   /* 中心の書類を先頭に */
   return out;
 }
-/* 必要書類の名前（例：志望理由書）と、作った書類の対応づけ。種別かタイトルで見る */
-function docMatchesLabel(d,label){
-  if(!d||!label) return false;
-  const key=String(label).replace(/書$/,'');
-  return d.type===label||(!!d.title&&d.title.indexOf(key)>=0)||(!!d.type&&d.type.indexOf(key)>=0);
-}
 /* その書類が今どこまで進んでいるか */
 function docProgress(s,label){
+  const key=String(label).replace(/書$/,'');
   const ds=(S.documents||[]).filter(d=>d.schoolId===s.id);
-  const hit=ds.filter(d=>docMatchesLabel(d,label));
+  const hit=ds.filter(d=>d.type===label||(d.title&&d.title.indexOf(key)>=0)||(d.type&&d.type.indexOf(key)>=0));
   if(!hit.length) return {state:'none',doc:null,len:0};
   const best=hit.slice().sort((a,b)=>countJP(b.body||'')-countJP(a.body||''))[0];
   const len=countJP(best.body||'');
@@ -4738,17 +4698,7 @@ function vTasks(){
   const open=S.tasks.filter(t=>!t.done).sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'));
   const done=S.tasks.filter(t=>t.done);
   if(!S.tasks.length){ w.appendChild(emptyState('✅','タスクがありません','「募集要項を確認」「志望理由書の初稿」「面接練習」など、やることを追加しましょう。志望校のチェックリストからも自動作成されます。',(()=>{const b=el('button','btn primary','タスクを追加');b.onclick=()=>editTask(null);return b;})())); return w; }
-  const oc=el('div','card'); oc.innerHTML='<div class="card-title"><span class="ic">'+ico('pin')+'</span><h3 data-tk="open">未完了（'+open.length+'）</h3></div>'; if(!open.length)oc.appendChild(el('p','small muted','未完了のタスクはありません。お疲れさまです！'));
-  /* 締切順のまま「期限を過ぎた／今日／7日以内／それ以降／期限なし」で区切る。
-     行の順番は従来どおりなので、続けてチェックを押しても隣の行には入らない。 */
-  const gcount=taskGroupCounts(); let gcur=null, gfirst=true;
-  open.forEach(t=>{
-    const g=taskGroup(t);
-    if(g!==gcur){ gcur=g; oc.appendChild(taskGroupHead(g,gcount[g],gfirst)); gfirst=false; }
-    oc.appendChild(taskRow(t,false));
-  });
-  if(gcount.over) oc.appendChild(el('p','xsmall muted','※ 期限を過ぎたタスクは消えません。終わっていればチェックを、まだなら「編集」を開いて〈今日〉〈明日〉を1タップで選び、日付を動かしてください。'));
-  w.appendChild(oc);
+  const oc=el('div','card'); oc.innerHTML='<div class="card-title"><span class="ic">'+ico('pin')+'</span><h3 data-tk="open">未完了（'+open.length+'）</h3></div>'; if(!open.length)oc.appendChild(el('p','small muted','未完了のタスクはありません。お疲れさまです！')); open.forEach(t=>oc.appendChild(taskRow(t,false))); w.appendChild(oc);
   if(done.length){ const dc=el('details','acc'); dc.innerHTML='<summary><span data-tk="done">完了済み（'+done.length+'）</span></summary>'; const body=el('div','acc-body'); done.forEach(t=>body.appendChild(taskRow(t,false))); dc.appendChild(body); w.appendChild(dc); }
   return w;
 }
@@ -4774,9 +4724,6 @@ function syncTaskCounts(){
     else if(k==='done') x.textContent='完了済み（'+doneN+'）';
     else if(k==='today'){ x.textContent=tdD+'/'+td.length+' 完了'; x.className='badge '+(td.length&&tdD===td.length?'ok':'teal'); }
   });
-  /* 区切り見出しの件数も合わせる（行は動かさず、数字だけ減る） */
-  const gc=taskGroupCounts();
-  document.querySelectorAll('[data-tkg]').forEach(x=>{ const k=x.getAttribute('data-tkg'); if(gc[k]!=null) x.textContent=gc[k]+'件'; });
 }
 /* 指がすべった直後の二度押しで、別の行に入ってしまうのを防ぐ */
 let _tapAt=0,_tapEl=null;
@@ -4808,63 +4755,34 @@ function taskCalendar(){
   const next=el('button','btn sm ghost','次の月 ›'); next.onclick=()=>{taskCalendar._off++;render();};
   const ttl=el('h4',null,`${y}年${m+1}月`); ttl.style.margin='0';
   nav.append(prev,ttl,next); head.appendChild(nav);
-  /* 先の月・前の月を見たまま画面を移ると、戻ってきたときも同じ月のままになる。
-     今日がどこにも映っていない状態から1タップで戻せるようにする */
-  if(taskCalendar._off!==0){
-    const bk=el('button','btn sm block','今月（'+(now.getMonth()+1)+'月）に戻る');
-    bk.style.marginTop='6px'; bk.onclick=()=>{taskCalendar._off=0;render();};
-    head.appendChild(bk);
-  }
   const grid=el('div'); grid.style.cssText='display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-top:8px';
   ['日','月','火','水','木','金','土'].forEach(d=>{const c=el('div','xsmall muted');c.style.textAlign='center';c.textContent=d;grid.appendChild(c);});
   for(let i=0;i<start;i++)grid.appendChild(el('div'));
   for(let d=1;d<=days;d++){
     const iso=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const all=S.tasks.filter(t=>t.due===iso); const dayTasks=all.filter(t=>!t.done);
-    /* 出願締切だけでなく、エントリー開始・試験日・合格発表もカレンダーに出す */
-    const evs=schoolEventsOn(iso); const evIcons=schoolEventIcons(evs);
+    const isDl=S.schools.filter(sc=>sc.deadline===iso);
     const cell=el('div');
-    cell.style.cssText='min-height:62px;border:1px solid var(--line);border-radius:8px;padding:3px;font-size:11px;position:relative;overflow:hidden;cursor:pointer;'+(iso===todayISO()?'background:var(--teal-soft);border-color:var(--teal);':'')+(evs.length?'border-color:var(--orange);':'');
-    cell.innerHTML=`<div style="font-weight:700">${d}${evIcons.length?' <span style="color:var(--orange)">'+evIcons.slice(0,2).join('')+'</span>':''}${all.length&&!dayTasks.length?' <span style="color:var(--ok)">✓</span>':''}</div>`;
+    cell.style.cssText='min-height:62px;border:1px solid var(--line);border-radius:8px;padding:3px;font-size:11px;position:relative;overflow:hidden;cursor:pointer;'+(iso===todayISO()?'background:var(--teal-soft);border-color:var(--teal);':'')+(isDl.length?'border-color:var(--orange);':'');
+    cell.innerHTML=`<div style="font-weight:700">${d}${isDl.length?' <span style="color:var(--orange)">📮</span>':''}${all.length&&!dayTasks.length?' <span style="color:var(--ok)">✓</span>':''}</div>`;
     dayTasks.slice(0,2).forEach(t=>{ const l=el('div'); l.style.cssText='margin-top:2px;background:var(--orange);color:#fff;border-radius:4px;font-size:9px;line-height:1.25;padding:1px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'; l.textContent=t.title; cell.appendChild(l); });
     if(dayTasks.length>2){ const mo=el('div'); mo.style.cssText='font-size:9px;color:var(--ink-3);margin-top:1px'; mo.textContent='＋'+(dayTasks.length-2)+'件'; cell.appendChild(mo); }
-    cell.title=(evs.map(e=>e.icon+' '+e.school.name+' '+e.label).concat(all.map(t=>(t.done?'✓ ':'')+t.title))).join('\n')||'予定なし';
+    cell.title=(isDl.map(sc=>'📮 '+sc.name+' 出願締切').concat(all.map(t=>(t.done?'✓ ':'')+t.title))).join('\n')||'予定なし';
     cell.onclick=()=>openDaySheet(iso);
     grid.appendChild(cell);
   }
   head.appendChild(grid);
-  const lg=el('p','xsmall muted','タップするとその日の予定を確認・チェックできます。✏️＝エントリー開始、📮＝出願締切、📝＝試験日、🎉＝合格発表、✓＝その日の予定は完了。日程は志望校に登録した内容から表示しています（必ず募集要項の原本で確認してください）。'); lg.style.margin='8px 0 0'; head.appendChild(lg);
+  const lg=el('p','xsmall muted','タップするとその日の予定を確認・チェックできます。📮＝出願締切、✓＝その日の予定は完了。'); lg.style.margin='8px 0 0'; head.appendChild(lg);
   wrap.appendChild(head);
   const up=S.tasks.filter(t=>!t.done&&t.due).sort((a,b)=>a.due.localeCompare(b.due)).slice(0,5);
   const uc=el('div','card tight'); uc.innerHTML='<h4>近い締切</h4>'; up.forEach(t=>uc.appendChild(taskRow(t,true))); if(!up.length)uc.appendChild(el('p','small muted','期限つきタスクはありません。')); wrap.appendChild(uc);
   return wrap;
 }
-/* 締切日を、スマホの日付ピッカーを開かずに1タップで決められるようにする。
-   期限を過ぎたタスクは一覧から消えないので、「何日過ぎているか」もその場に出して
-   〈今日〉〈明日〉で動かせるようにしておく（編集→ピッカーの月送り、が要らなくなる） */
-const DUE_QUICK=[['今日',0],['明日',1],['3日後',3],['1週間後',7]];
-function editTask(id,presetDue){
+function editTask(id){
   const t=id?S.tasks.find(x=>x.id===id):{};
   openSheet(id?'タスクを編集':'タスクを追加',(b,close)=>{
     const f={}; f.title=fieldText('タスク名 *',t.title,null,{placeholder:'例：志望理由書の初稿を作る'}); b.appendChild(f.title);
-    const r=el('div','row2'); f.due=fieldText('締切日',t.due||presetDue||'',null,{type:'date'}); f.cat=fieldText('カテゴリー',t.category,'例：書類 / 面接'); r.append(f.due,f.cat); b.appendChild(r);
-    const qr=el('div','btn-row'); qr.setAttribute('data-duequick','1'); qr.style.margin='-4px 0 8px';
-    const info=el('div','xsmall'); info.setAttribute('data-dueinfo','1'); info.style.margin='0 0 12px';
-    const dueInp=f.due._input;
-    const paintDue=()=>{
-      const v=dueInp.value, dd=daysUntil(v);
-      if(!v||dd==null){ info.innerHTML='<span class="muted">締切日を入れないと、一覧のいちばん下の「期限なし」に入ります。</span>'; return; }
-      const cls=dd<0?'alert':dd<=3?'warn':'grey';
-      const txt=dd<0?(-dd)+'日 過ぎています':dd===0?'今日が締切です':'あと'+dd+'日';
-      info.innerHTML=esc(fmtDate(v))+' <span class="badge '+cls+'">'+esc(txt)+'</span>';
-    };
-    DUE_QUICK.forEach(q=>{ const bt=el('button','btn sm ghost',q[0]); bt.setAttribute('data-due',q[1]);
-      bt.onclick=()=>{ dueInp.value=isoAdd(todayISO(),q[1]); paintDue(); }; qr.appendChild(bt); });
-    const clr=el('button','btn sm ghost','期限なし'); clr.setAttribute('data-due','');
-    clr.onclick=()=>{ dueInp.value=''; paintDue(); }; qr.appendChild(clr);
-    b.appendChild(qr); b.appendChild(info);
-    dueInp.addEventListener('input',paintDue); dueInp.addEventListener('change',paintDue);
-    paintDue();
+    const r=el('div','row2'); f.due=fieldText('締切日',t.due,null,{type:'date'}); f.cat=fieldText('カテゴリー',t.category,'例：書類 / 面接'); r.append(f.due,f.cat); b.appendChild(r);
     f.school=fieldSelect('関連する志望校',t.schoolId,[{value:'',label:'—'},...S.schools.map(s=>({value:s.id,label:s.name}))]); b.appendChild(f.school);
     const sv=el('button','btn primary','保存'); sv.onclick=()=>{ if(!f.title.get()){toast('タスク名を入力してください','warn');return;} if(id){t.title=f.title.get();t.due=f.due.get();t.category=f.cat.get();t.schoolId=f.school.get()||null;} else S.tasks.push({id:uid(),title:f.title.get(),due:f.due.get(),category:f.cat.get(),schoolId:f.school.get()||null,done:false}); close(); commit('保存しました'); }; b.appendChild(sv);
     if(id){ const del=el('button','btn danger','削除');del.style.marginLeft='6px'; del.onclick=()=>{close();confirmDelete('このタスクを削除しますか？',()=>{S.tasks=S.tasks.filter(x=>x.id!==id);commit('削除しました');});}; b.appendChild(del); }
@@ -4934,7 +4852,7 @@ function voiceTools(ta,opts){
   mic.onclick=()=>{
     if(recording){ try{rec.stop();}catch(e){} return; }
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-    if(!SR){ status.textContent='この端末・ブラウザは音声入力に未対応です。Chrome や Safari でお試しいただくか、🎧 で録音ファイルをご利用ください。'; toast('この端末は音声入力に未対応です','warn'); return; }
+    if(!SR){ status.textContent='この端末・ブラウザは音声入力に未対応です。Chrome か Safari でお試しください。文字で入力しても大丈夫です。'; toast('この端末は音声入力に未対応です','warn'); return; }
     rec=new SR(); rec.lang='ja-JP'; rec.continuous=true; rec.interimResults=true;
     const base=String(ta.value||'').replace(/\s+$/,''); let fin='';
     rec.onstart=()=>{ recording=true; mic.textContent='⏹ 停止（録音中…）'; mic.classList.add('danger'); status.textContent='話してください。認識した言葉がそのまま入力されます。終わったら「停止」を押してください。'; };
@@ -4944,7 +4862,8 @@ function voiceTools(ta,opts){
     try{ rec.start(); }catch(e){ toast('音声入力を開始できませんでした','err'); }
   };
   row.appendChild(mic);
-  const af=el('button','btn sm','🎧 録音ファイルから文字起こし');
+  /* 録音ファイルの文字起こしは、いまサーバー側に未対応のため出しません */
+  const af=el('button','btn sm','🎧 録音ファイルから文字起こし'); af.style.display='none';
   af.onclick=()=>{ const inp=el('input'); inp.type='file'; inp.accept='audio/*,.m4a,.mp3,.wav,.mp4,.webm,.ogg,.aac,.flac';
     inp.onchange=async e=>{ const f=e.target.files[0]; if(!f) return; af.disabled=true; status.textContent='文字起こし中…（録音の長さにより数十秒かかります）';
       try{ const t=await transcribeAudio(f); append(t); status.textContent='「'+f.name+'」を文字起こしして追記しました。誤変換がないか確認してください。'; toast('文字起こしを追記しました','ok'); }
@@ -4956,7 +4875,7 @@ function voiceTools(ta,opts){
   fl.onclick=()=>pickFile('.pdf,.docx,.pptx,.txt,.md,.csv',(text,meta)=>{ append(text); status.textContent='「'+((meta&&meta.name)||'ファイル')+'」の内容を追記しました。'; toast('読み込みました','ok'); });
   row.appendChild(fl);
   wrap.appendChild(row); wrap.appendChild(status);
-  const note=el('p','xsmall muted',opts.note||'🎤 は端末のマイクで話した内容を文字にします（Chrome / Safari など対応ブラウザ・要マイク許可）。🎧 はボイスメモ等の録音ファイルを文字起こしします（GPT／互換APIのキー登録が必要）。自動変換のため、誤りがないか必ず確認してください。');
+  const note=el('p','xsmall muted',opts.note||'🎤 を押すと、話した内容がそのまま文字になります（Chrome / Safari など。マイクの許可が必要です）。聞き取りは完璧ではないので、あとから直してください。');
   note.style.marginTop='2px'; wrap.appendChild(note);
   return wrap;
 }
