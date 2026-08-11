@@ -561,7 +561,7 @@ a{color:var(--teal)}
 /* =========================================================================
    STORIA — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.11-34';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.11-36';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_BASE='aoCompass_v1';
 const LS_SCOPE_KEY='aoCompass_scope';
 /* ログイン中のデータは、アカウントごとの引き出しに入れます。
@@ -885,10 +885,17 @@ const BILLING={
   /* enabled:false = 課金の仕組みを完全にオフにして、全機能を無料で開放します。
      将来また有料にしたくなったら true に戻すだけでOK（コードはそのまま残しています）。 */
   enabled:false,
-  /* ↓ Stripeの「Payment Link」を作って、ここに貼り付けてください（空のままだと「準備中」と表示されます） */
+  /* ★ここが「売るための1行」です★
+     Stripe の Payment Link を、下の once:'...' の中に貼り替えてください。
+     ・審査前のリンクは https://buy.stripe.com/test_... で始まります（本番のお金は動きません）
+     ・審査が終わった本番リンクは test_ が付きません
+     test_ が付いているあいだは、ボタンに「テスト用」と出るようにしてあります。
+     売り始めるときは、この1行を本番リンクに差し替えるだけです。 */
   links:{ month:'', year:'', once:'https://buy.stripe.com/test_7sY5kCeMDdiv9l95Iy1ZS00' },
-  support:''  /* 問い合わせ先メール（任意） */
+  support:'support@storiaai.jp'  /* 問い合わせ先メール */
 };
+/* テスト用リンクかどうか。本番リンクに替えると自動で false になります。 */
+function isTestPay(u){ return !!u && u.indexOf('/test_')>=0; }
 /* 年度の考え方。4月に始まり、翌年3月31日に終わる。
    毎年ここを書き換えなくていいように、今日の日付から計算します。 */
 function nendo(d){ d=d||new Date(); return d.getMonth()>=3 ? d.getFullYear() : d.getFullYear()-1; }
@@ -963,8 +970,9 @@ function openBillingSheet(reason){
       const c=el('div','card tight');
       c.innerHTML='<div style="display:flex;align-items:center;gap:8px"><b class="small">'+esc(pr.name)+'</b>'+(pr.best?'<span class="badge teal">おすすめ</span>':'')+'</div><div style="font-size:17px;font-weight:800;color:var(--navy);margin-top:2px">'+esc(pr.price)+'</div><div class="xsmall muted">'+esc(pr.note)+'</div>';
       const link=(BILLING.links||{})[pr.id];
-      const btn=el('button','btn '+(pr.best?'primary':'')+' sm block', link?'このプランに申し込む':'準備中');
+      const btn=el('button','btn '+(pr.best?'primary':'')+' sm block', link?(isTestPay(link)?'このプランに申し込む（テスト用リンク）':'このプランに申し込む'):'準備中');
       btn.style.marginTop='8px'; btn.disabled=!link;
+      if(isTestPay(link)) c.appendChild(el('p','xsmall muted','※ いまは支払いテスト中のリンクです。実際の請求は発生しません。'));
       btn.onclick=()=>{
         if(!link) return;
         /* ログイン中なら、どのアカウントの支払いかをStripe側に残す。
@@ -3166,26 +3174,110 @@ const COMMON_Q=['なぜこの大学を志望しましたか。','なぜこの学
    （最後の講評だけ、加入者はAIを1回使います）
    ============================================================ */
 function ttsReady(){ return typeof window!=='undefined' && 'speechSynthesis' in window; }
+
+/* 端末に入っている日本語の声を、自然に聞こえそうな順に並べる。
+   端末によって入っている声はまるで違うので、本人に選ばせるのが一番確実です。 */
+let _voiceCache=null;
+function jaVoices(){
+  if(!ttsReady()) return [];
+  let vs=[];
+  try{ vs=window.speechSynthesis.getVoices()||[]; }catch(e){ return []; }
+  const ja=vs.filter(v=>/^ja/i.test(v.lang||'') || /japan|日本/i.test(v.name||''));
+  /* 名前で点数をつける。上のほうが自然に聞こえることが多い声。 */
+  const score=(v)=>{
+    const n=(v.name||'');
+    let sc=0;
+    if(/premium|enhanced|拡張|neural|siri/i.test(n)) sc+=60;   /* 高品質版が入っていれば最優先 */
+    if(/nanami|ayumi|keita|mayu|sayaka/i.test(n))    sc+=40;   /* Microsoft系は比較的なめらか */
+    if(/kyoko|京子/i.test(n))                        sc+=30;
+    if(/o-?ren|otoya/i.test(n))                      sc+=20;
+    if(/google/i.test(n))                            sc+=15;
+    if(v.localService===false)                       sc+=10;   /* 通信して合成する声は概して自然 */
+    return sc;
+  };
+  return ja.slice().sort((a,b)=>score(b)-score(a));
+}
+/* 声の一覧は読み込みが遅れることがあるので、変わったら覚え直す */
+if(typeof window!=='undefined' && 'speechSynthesis' in window){
+  try{ window.speechSynthesis.onvoiceschanged=()=>{ _voiceCache=null; }; }catch(e){}
+}
+function pickVoice(){
+  const list=jaVoices(); if(!list.length) return null;
+  const want=(S.prefs&&S.prefs.voiceName)||'';
+  if(want){ const hit=list.find(v=>v.name===want); if(hit) return hit; }
+  return list[0];
+}
+function voiceRate(){ const r=+((S.prefs&&S.prefs.voiceRate)||0); return (r>=0.6&&r<=1.4)?r:0.92; }
+
+/* 文を句読点で区切って、少し間を置きながら読む。
+   一息で読み切るより、人が話しているように聞こえます。 */
 function speak(text,onend){
   if(!ttsReady()){ if(onend) setTimeout(onend,0); return; }
-  try{
-    window.speechSynthesis.cancel();
-    const u=new SpeechSynthesisUtterance(String(text||''));
-    u.lang='ja-JP'; u.rate=0.95;
-    try{
-      const vs=window.speechSynthesis.getVoices()||[];
-      const ja=vs.filter(v=>/^ja/i.test(v.lang||''));
-      if(ja.length) u.voice=ja[0];
-    }catch(e){}
-    let done=false;
-    const fin=()=>{ if(done)return; done=true; if(onend)onend(); };
-    u.onend=fin; u.onerror=fin;
-    window.speechSynthesis.speak(u);
-    /* 読み上げが始まらない端末でも進めるように、保険をかける */
-    setTimeout(fin, Math.min(20000, 2500+String(text||'').length*120));
-  }catch(e){ if(onend) setTimeout(onend,0); }
+  const raw=String(text||'').trim();
+  if(!raw){ if(onend) setTimeout(onend,0); return; }
+  try{ window.speechSynthesis.cancel(); }catch(e){}
+
+  /* 「、」「。」で区切る。短すぎる断片はくっつける。 */
+  let parts=raw.split(/(?:。|、|\n)/).map(x=>x.trim()).filter(Boolean);
+  const merged=[];
+  parts.forEach(x=>{
+    if(merged.length && (merged[merged.length-1].length<10 || x.length<6)) merged[merged.length-1]+='、'+x;
+    else merged.push(x);
+  });
+  parts = merged.length?merged:[raw];
+
+  const v=pickVoice(), rate=voiceRate();
+  let k=0, done=false;
+  const fin=()=>{ if(done)return; done=true; if(onend)onend(); };
+  const say=()=>{
+    if(k>=parts.length){ fin(); return; }
+    const isLast=(k===parts.length-1);
+    const u=new SpeechSynthesisUtterance(parts[k]+(isLast?'。':'、'));
+    u.lang='ja-JP'; u.rate=rate; u.pitch=1.02; u.volume=1;
+    if(v) u.voice=v;
+    const next=()=>{ k++; setTimeout(say, isLast?0:220); };   /* 句のあいだに少し間を置く */
+    u.onend=next; u.onerror=next;
+    try{ window.speechSynthesis.speak(u); }catch(e){ next(); }
+  };
+  say();
+  /* 読み上げが始まらない端末でも進めるように、保険をかける */
+  setTimeout(fin, Math.min(30000, 3000+raw.length*(1000/(rate*7))));
 }
 function stopSpeak(){ try{ if(ttsReady()) window.speechSynthesis.cancel(); }catch(e){} }
+
+/* 声を選ぶ画面（模擬面接の設定から開く） */
+function voicePicker(){
+  const list=jaVoices();
+  const box=el('div','card tight'); box.style.marginTop='8px';
+  box.innerHTML='<div class="small"><b>読み上げの声</b></div>';
+  if(!list.length){
+    box.appendChild(el('p','xsmall muted','この端末には日本語の声が見つかりませんでした。読み上げなしでも模擬面接はできます。'));
+    return box;
+  }
+  const sel=fieldSelect('声', (S.prefs&&S.prefs.voiceName)||list[0].name,
+    list.map(v=>({value:v.name,label:v.name+(v.localService===false?'（通信）':'')})));
+  box.appendChild(sel);
+  const rates=[[0.85,'ゆっくり'],[0.92,'ふつう'],[1.05,'はやい']];
+  const rr=el('div'); rr.innerHTML='<div class="xsmall muted">話す速さ</div>';
+  const row=el('div','btn-row'); row.style.marginTop='4px';
+  rates.forEach(([v,lb])=>{
+    const bt=el('button','btn sm '+(Math.abs(voiceRate()-v)<0.02?'primary':'ghost'),lb);
+    bt.onclick=()=>{ S.prefs=Object.assign({},S.prefs,{voiceRate:v}); save();
+      [...row.children].forEach(c=>c.className='btn sm ghost'); bt.className='btn sm primary'; };
+    row.appendChild(bt);
+  });
+  rr.appendChild(row); box.appendChild(rr);
+
+  const test=el('button','btn sm block','▶ 試し聞き'); test.style.marginTop='8px';
+  test.onclick=()=>{
+    S.prefs=Object.assign({},S.prefs,{voiceName:sel.get()}); save();
+    speak('では、志望理由を教えてください。あなた自身の言葉で、一分ほどでお願いします。');
+  };
+  box.appendChild(test);
+  box.appendChild(el('p','xsmall muted','いくつか聞いてみて、いちばん自然なものを選んでください。端末によって入っている声がちがいます。'));
+  sel.onchange=()=>{ S.prefs=Object.assign({},S.prefs,{voiceName:sel.get()}); save(); };
+  return box;
+}
 
 /* 出題する質問を集める */
 function mockQuestions(n){
@@ -3205,6 +3297,8 @@ function mockQuestions(n){
 }
 
 function openMockInterview(){
+  /* 声の一覧は読み込みが遅れることがあるので、先に一度呼んで用意させる */
+  try{ if(ttsReady()) window.speechSynthesis.getVoices(); }catch(e){}
   const st={n:5,sec:60,speakOn:ttsReady()};
   openSheet('模擬面接',(b,close)=>{
     b.appendChild(el('div','note info','本番と同じように、<b>質問が声で読み上げられます。</b>声に出して答えてください。答えは自動で文字になり、面接タブに保存されます。'));
@@ -3226,6 +3320,13 @@ function openMockInterview(){
     cfg.appendChild(mk('1問あたりの持ち時間',[[60,'1分'],[90,'1分30秒'],[120,'2分']],()=>st.sec,v=>st.sec=v));
     if(ttsReady()) cfg.appendChild(mk('質問の読み上げ',[[true,'する'],[false,'しない']],()=>st.speakOn,v=>st.speakOn=v));
     b.appendChild(cfg);
+    if(ttsReady()){
+      const vd=el('details','acc');
+      vd.innerHTML='<summary><span class="smt">声を変える・試し聞きする</span></summary>';
+      const inner=el('div'); inner.style.padding='4px 2px 2px';
+      inner.appendChild(voicePicker());
+      vd.appendChild(inner); b.appendChild(vd);
+    }
 
     const qs=mockQuestions(st.n);
     if(!qs.length){
@@ -3633,7 +3734,8 @@ function maybeOnboard(){
    利用者には「前に開いたときより新しくなっていたら」だけ知らせます。 */
 const CHANGELOG=[
 /*NEWEST*/
-{v:'2026.08.11-34',d:'2026-08-08',t:'模擬面接モードを追加しました。質問が声で読み上げられ、声で答えると自動で文字になります。'},
+{v:'2026.08.11-35',d:'2026-08-11',t:'模擬面接の読み上げを自然にしました。声を選べるようにし、句読点で間を置いて読むようにしました。'},
+{v:'2026.08.11-34',d:'2026-08-11',t:'模擬面接モードを追加しました。質問が声で読み上げられ、声で答えると自動で文字になります。'},
 {v:'2026.08.11-33',d:'2026-08-07',t:'絵文字をやめて、線で描いたアイコンに統一しました。お知らせを右上のベルにまとめ、未読には NEW が付きます。'},
 {v:'2026.08.11-15',d:'2026-08-07',t:'APIキーの用意が不要になりました。受験生パックに加入すると、設定なしでAIが使えます。'},
 {v:'2026.08.11-13',d:'2026-08-07',t:'「大学をさがす」を追加しました。書いた言葉から近い分野を出します。'},
