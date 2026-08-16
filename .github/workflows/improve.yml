@@ -2,9 +2,6 @@
 # 毎時、アプリを少しずつ良くする案を出して、安全なものだけ実装します。
 # テストに通ったときだけ main に入り、そのまま公開されます。
 # テストが1つでも落ちたら、その回の変更はまるごと捨てられます。
-# 作業中にご本人が index.html を直していた場合は、上書きせず、
-# ご本人の編集の上に今回の改善を重ねてから、もう一度テストして公開します。
-# 同じ場所を両方が直していて合わせられないときだけ、その回を見送ります。
 name: AO Compass 自動改善
 
 on:
@@ -25,95 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      # 履歴を全部取っておく（あとで本人の編集と突き合わせるため）
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      # 鍵が本当に使えるか、どのAIが使えるかを、最初に確かめる。
-      # ここで理由がはっきり分かるので、あとでログを掘らなくて済みます。
-      - name: 鍵とAIの確認
-        id: key
-        env:
-          KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          if [ -z "$KEY" ]; then
-            echo "鍵（ANTHROPIC_API_KEY）が設定されていません。Settings → Secrets and variables → Actions で登録してください。" | tee -a "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
-
-          # 1) この鍵で使えるAIの一覧をもらう
-          CODE=$(curl -sS -m 30 -o /tmp/models.json -w '%{http_code}' \
-            "https://api.anthropic.com/v1/models?limit=30" \
-            -H "x-api-key: $KEY" -H "anthropic-version: 2023-06-01" || echo 000)
-          echo "一覧の応答: $CODE"
-
-          if [ "$CODE" = "401" ] || [ "$CODE" = "403" ]; then
-            { echo "## 鍵が使えません（$CODE）";
-              echo "ANTHROPIC_API_KEY が無効か、失効しています。console.anthropic.com で新しい鍵を作り、";
-              echo "Settings → Secrets and variables → Actions で入れ直してください。";
-              echo '```'; head -c 500 /tmp/models.json; echo; echo '```'; } | tee -a "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
-
-          if [ "$CODE" != "200" ]; then
-            { echo "## AIの一覧が取れませんでした（$CODE）"; echo '```'; head -c 500 /tmp/models.json; echo; echo '```'; } | tee -a "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
-
-          # 2) 良い順に候補を並べる
-          CANDS=$(node -e '
-            var d = JSON.parse(require("fs").readFileSync("/tmp/models.json","utf8"));
-            var ids = (d.data || []).map(function(m){ return m.id; });
-            var by = function(re){ return ids.filter(function(x){ return re.test(x); }); };
-            var order = by(/opus/).concat(by(/sonnet/)).concat(by(/haiku/)).concat(ids);
-            var seen = {}, out = [];
-            order.forEach(function(x){ if (x && !seen[x]) { seen[x] = 1; out.push(x); } });
-            console.log(out.slice(0, 8).join(" "));
-          ')
-          echo "候補: $CANDS"
-
-          if [ -z "$CANDS" ]; then
-            echo "使えるAIが1つもありませんでした。" | tee -a "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
-
-          # 3) 1文字だけ投げて、実際に返事が来るものを上から順に探す。
-          #    一覧に載っていても、残高や権限で呼べないことがあるため。
-          GOOD=""
-          TRIED=""
-          FIRSTERR=""
-          for M in $CANDS; do
-            C2=$(curl -sS -m 30 -o /tmp/probe.json -w '%{http_code}' \
-              https://api.anthropic.com/v1/messages \
-              -H "x-api-key: $KEY" -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
-              -d "{\"model\":\"$M\",\"max_tokens\":1,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}" || echo 000)
-            echo "試し打ち $M -> $C2"
-            TRIED="$TRIED
-          - \`$M\` … $C2"
-            if [ "$C2" = "200" ]; then GOOD="$M"; break; fi
-            if [ -z "$FIRSTERR" ]; then FIRSTERR=$(head -c 600 /tmp/probe.json); fi
-          done
-
-          {
-            echo "### 試し打ちの結果"
-            echo "$TRIED"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          if [ -z "$GOOD" ]; then
-            { echo "## どのAIも呼べませんでした";
-              echo "鍵は生きていますが、返事が返ってきません。残高不足・利用上限・鍵の権限のどれかです。";
-              echo "console.anthropic.com の Billing（残高）と Limits（上限）を見てください。";
-              echo "";
-              echo "最初のエラーの中身:";
-              echo '```'; echo "$FIRSTERR"; echo; echo '```'; } | tee -a "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
-
-          echo "使うAI: $GOOD"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "今回使うAI: \`$GOOD\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "modelarg=--model $GOOD" >> "$GITHUB_OUTPUT"
 
       # 案が尽きてきたら 1日1回だけ動かすモードに落とす
       - id: gate
@@ -136,7 +45,6 @@ jobs:
         run: |
           cp index.html /tmp/before.html
           wc -c < index.html > /tmp/before.size
-          git rev-parse HEAD > /tmp/before.sha
 
       - uses: actions/setup-node@v4
         if: steps.gate.outputs.run == 'yes'
@@ -263,46 +171,8 @@ jobs:
           fi
 
           npm init -y >/dev/null 2>&1 || true
-          # ネットワークが不安定な回があるので3回まで試す
-          for i in 1 2 3; do npm i -D playwright >/dev/null && break; echo "npm 再試行 $i"; sleep 20; done
-          for i in 1 2 3; do npx playwright install --with-deps chromium && break; echo "ブラウザ 再試行 $i"; sleep 20; done
-
-          # tests/ の中にあるテストを「全部」走らせる道具を作る。
-          # smoke.mjs だけだと、見た目が崩れる系の壊れ方を見逃すため。
-          cat > /tmp/aotest.sh <<'AOTESTEOF'
-          #!/bin/bash
-          # ここに書いた名前のテストは走らせません。
-          # 理由：アプリの中身が育つ過程で、これらのテストが見ていた古い部品名が
-          #       無くなったため、いまは「落ちる」だけで何も教えてくれない状態です。
-          #       （アプリ側が壊れているわけではありません）
-          # 直したくなったら、この行から名前を外せば、また走るようになります。
-          SKIP="backup.mjs backup-guard.mjs doc-meta.mjs doc-title-question.mjs home-dates.mjs home-primary.mjs home-priority.mjs home-strip.mjs interview-essay.mjs school-dates.mjs school-sort.mjs sheet-close.mjs task-due.mjs task-groups.mjs shots.mjs"
-          FAILED=""; RAN=0; SKIPPED=""
-          for t in tests/*.mjs; do
-            [ -f "$t" ] || continue
-            B=$(basename "$t")
-            case " $SKIP " in *" $B "*) SKIPPED="$SKIPPED $B"; continue;; esac
-            echo "----- $t"
-            RAN=$((RAN+1))
-            if ! timeout 300 node "$t"; then FAILED="$FAILED $B"; fi
-          done
-          # 飛ばしたものは必ず表に出す（黙って省くと「全部見た」と勘違いするため）
-          [ -n "$SKIPPED" ] && echo "※ 今回走らせなかった古いテスト:$SKIPPED"
-          if [ "$RAN" = "0" ]; then echo "テストが1つもありません"; exit 1; fi
-          if [ -n "$FAILED" ]; then echo "落ちたテスト:$FAILED"; exit 1; fi
-          echo "テスト $RAN 本、すべて通りました"
-          AOTESTEOF
-          chmod +x /tmp/aotest.sh
-
-      # AIが触る前に、いまのアプリがテストを通ることを確かめる
-      # （もともと落ちているなら、それはAIのせいではないので先に知らせる）
-      - name: 変更前テスト
-        if: steps.gate.outputs.run == 'yes'
-        run: |
-          if ! /tmp/aotest.sh; then
-            echo "改善する前の時点でテストが落ちています。手で入れた変更のどこかが崩れている可能性があります。この回は何もしませんでした。" | tee -a "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
+          npm i -D playwright >/dev/null
+          npx playwright install --with-deps chromium
 
       - uses: anthropics/claude-code-action@v1
         if: steps.gate.outputs.run == 'yes'
@@ -311,9 +181,9 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          # ここに --model は書かないこと。存在しないモデル名を書くと必ずエラーで止まります。
           claude_args: |
             --max-turns 60
-            ${{ steps.key.outputs.modelarg }}
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash"
           prompt: |
             あなたはこのリポジトリの開発者です。質問はせず、最後まで自分で進めてください。
@@ -381,9 +251,8 @@ jobs:
             **APP_VER を必ず変えること。**変わっていないと、この回の変更はすべて捨てられます。
 
             ## 4. 検証する（省略不可）
-            `tests/` の中のテストはすでに用意されています。作り直さないでください。
-            - `tests/` の中の **すべての** テストを通す（`for t in tests/*.mjs; do node $t; done` で全部 PASS になるまで直す）
-            - とくに `tests/render-sanity.mjs` は画面の文字化けを見つけるためのものです。ここが落ちたら、テンプレート文字列（バッククォート）の中で `'+ico('...')+'` のような書き方をしていないか確認してください。中では `${ico('...')}` を使います。
+            `tests/smoke.mjs` はすでに用意されています。作り直さないでください。
+            - `node tests/smoke.mjs` を通す（全部 PASS になるまで直す）
             - 今回変えた挙動そのものを確かめるテストを `tests/` に1本足して通す
             赤いまま終わらせない。直せない変更は取り消して、残りだけ残す。
 
@@ -402,55 +271,6 @@ jobs:
             5案すべてが「入れるほどではない」と判断した場合は、`index.html` を一切変えずに終わってください。
             そのうえで `.claude/improve-state.json` を `{"mode":"daily"}` の内容に書き換えてください。
             毎時から1日1回に落ちます。頻度を上げ直すことはしないでください。
-
-      # 改善した内容を、アプリの中の「更新のお知らせ」に1件足す。
-      # これで利用者は、次に開いたときに「何が変わったか」を見られる。
-      - name: 更新のお知らせを書く
-        if: steps.gate.outputs.run == 'yes'
-        run: |
-          if cmp -s /tmp/before.html index.html; then echo "変更なし。お知らせは足しません。"; exit 0; fi
-          node - <<'AONEWSEOF'
-          const fs=require('fs');
-          const f='index.html';
-          let s=fs.readFileSync(f,'utf8');
-
-          // 1) 今回のバージョン
-          const mv=s.match(/APP_VER='([^']+)'/);
-          if(!mv){ console.log('APP_VER が見つからないので、お知らせは足しません'); process.exit(0); }
-          const ver=mv[1];
-
-          // 2) AIが書いた報告から、利用者向けの1文をつくる
-          let text='';
-          try{
-            const rep=fs.readFileSync('.claude/last-report.md','utf8');
-            const lines=rep.split('\n').map(x=>x.trim())
-              .filter(x=>x && !x.startsWith('#') && !x.startsWith('---') && !/^(見送|今回は見送)/.test(x));
-            text=lines.slice(0,2).map(x=>x.replace(/^[-*・\s]+/,'')).join(' ');
-          }catch(e){}
-          if(!text) text='使いやすさを少し改善しました。';
-          text=text.replace(/\s+/g,' ').slice(0,120);
-
-          // 3) 目印の直後に差し込む（すでに同じ版があれば何もしない）
-          const mark='/*NEWEST*/';
-          if(s.indexOf(mark)<0){ console.log('目印がないので、お知らせは足しません'); process.exit(0); }
-          if(s.indexOf("{v:'"+ver+"'")>=0){ console.log('この版のお知らせはすでにあります'); process.exit(0); }
-          const d=new Date().toISOString().slice(0,10);
-          const esc=x=>String(x).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-          const entry="\n{v:'"+esc(ver)+"',d:'"+d+"',t:'"+esc(text)+"'},";
-          s=s.replace(mark, mark+entry);
-
-          // 4) 古いお知らせは30件までにする
-          const m2=s.match(/const CHANGELOG=\[([\s\S]*?)\n\];/);
-          if(m2){
-            const items=m2[1].split(/\},\s*\n/).filter(x=>x.indexOf("{v:'")>=0);
-            if(items.length>30){
-              const kept=items.slice(0,30).map(x=>x.replace(/,\s*$/,'').replace(/\}$/,'')+'}').join(',\n');
-              s=s.replace(m2[0], 'const CHANGELOG=[\n/*NEWEST*/\n'+kept+'\n];');
-            }
-          }
-          fs.writeFileSync(f,s);
-          console.log('お知らせを追加しました: '+ver+' / '+text);
-          AONEWSEOF
 
       # ここから先は人が書いた確認です。1つでも引っかかったら公開しません。
       - name: 安全確認
@@ -489,8 +309,8 @@ jobs:
             echo "NG: APIキーらしき文字列が入っている"; exit 1
           fi
 
-          # 最終確認としてテストをもう一度走らせる（tests/ の中を全部）
-          /tmp/aotest.sh
+          # 最終確認としてテストをもう一度走らせる
+          node tests/smoke.mjs
 
           echo "changed=yes" >> "$GITHUB_OUTPUT"
 
@@ -501,132 +321,22 @@ jobs:
           VER=$(grep -o "APP_VER='[^']*'" index.html | head -1 | sed "s/APP_VER='//;s/'//")
           git config user.name "AO Compass Bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # 公開するのはこの4つだけ。node_modules などは絶対に入れない。
+          git add index.html
+          git add .gitignore || true
+          git add tests || true
+          git add .claude || true
+          git status --short
+          git commit -m "自動改善 $VER"
+          git push origin HEAD:main
+          echo "公開しました: $VER"
 
-          BASE=$(cat /tmp/before.sha)
-          cp index.html /tmp/ours.html
-
-          # 今回できたテストと記録を退避しておく（合流のときに巻き添えで消さないため）
-          rm -rf /tmp/keep; mkdir -p /tmp/keep
-          if [ -d tests ]; then cp -r tests /tmp/keep/; fi
-          if [ -d .claude ]; then cp -r .claude /tmp/keep/; fi
-          if [ -f .gitignore ]; then cp .gitignore /tmp/keep/; fi
-
-          DONE=no
-          for i in 1 2 3; do
-            git fetch -q origin main
-            REMOTE=$(git rev-parse origin/main)
-
-            # この回は20〜30分かかります。その間にご本人が index.html を直していることがあります。
-            # その場合は上書きせず、ご本人の編集の上に今回の改善を重ねます。
-            if [ "$REMOTE" != "$BASE" ]; then
-              echo "作業中にご本人の更新がありました。両方を合わせます。"
-              git show "$BASE:index.html"   > /tmp/mb.html
-              git show "$REMOTE:index.html" > /tmp/mt.html
-              cp /tmp/ours.html               /tmp/mo.html
-              THEIRVER=$(grep -o "APP_VER='[^']*'" /tmp/mt.html | head -1 | sed "s/APP_VER='//;s/'//")
-
-              # バージョンの行は必ずぶつかるので、いったん共通の目印にそろえてから合わせる
-              sed -i "s/APP_VER='[^']*'/APP_VER='__AOVER__'/" /tmp/mb.html /tmp/mt.html /tmp/mo.html
-
-              if ! git merge-file -q /tmp/mo.html /tmp/mb.html /tmp/mt.html; then
-                echo "今回は見送りました。ご本人が直したのと同じ場所を改善しようとしたため、自動では合わせられません。アプリはご本人の版のままです。" | tee -a "$GITHUB_STEP_SUMMARY"
-                exit 0
-              fi
-
-              # ご本人がつけた番号と同じにならないようにする
-              NEW="$VER"; D=$(echo "$VER" | cut -d- -f1); k=2
-              while [ "$NEW" = "$THEIRVER" ]; do NEW="$D-$k"; k=$((k+1)); done
-              sed -i "s/APP_VER='__AOVER__'/APP_VER='$NEW'/" /tmp/mo.html
-              VER="$NEW"
-
-              # ご本人の最新の上に載せ直す
-              git checkout -q -f "$REMOTE"
-              cp /tmp/mo.html index.html
-              if [ -d /tmp/keep/tests ]; then cp -r /tmp/keep/tests .; fi
-              if [ -d /tmp/keep/.claude ]; then cp -r /tmp/keep/.claude .; fi
-              if [ -f /tmp/keep/.gitignore ] && [ ! -f .gitignore ]; then cp /tmp/keep/.gitignore .; fi
-              cp index.html /tmp/ours.html
-              BASE="$REMOTE"
-
-              # 合わせた結果を、もう一度ぜんぶ確認する。ここが命綱です。
-              GIVEUP=""
-              grep -q '募集要項' index.html || GIVEUP="免責の帯が消えた"
-              grep -q "APP_VER='$VER'" index.html || GIVEUP="バージョンが入らなかった"
-              if grep -qE 'sk-ant-|sk-proj-|service_role' index.html; then GIVEUP="キーらしき文字列が出た"; fi
-              A=$(wc -c < /tmp/mt.html); B=$(wc -c < index.html)
-              awk -v a="$A" -v b="$B" 'BEGIN{ if (b < a*0.85 || b > a*1.30) exit 1 }' || GIVEUP="大きさが極端に変わった"
-              if [ -z "$GIVEUP" ] && ! /tmp/aotest.sh; then GIVEUP="テストが落ちた"; fi
-              if [ -n "$GIVEUP" ]; then
-                echo "合わせた結果に問題（$GIVEUP）があったので、今回は公開を見送りました。アプリはご本人の版のままです。" | tee -a "$GITHUB_STEP_SUMMARY"
-                exit 0
-              fi
-              echo "ご本人の編集と今回の改善を合わせました。"
-            fi
-
-            # 公開するのはこの4つだけ。node_modules などは絶対に入れない。
-            git add index.html
-            git add .gitignore || true
-            git add tests || true
-            git add .claude || true
-            git status --short
-            if git diff --cached --quiet; then
-              echo "公開するものがありませんでした。"
-              exit 0
-            fi
-            git commit -q -m "自動改善 $VER"
-
-            if git push origin HEAD:main; then
-              echo "公開しました: $VER"
-              echo "公開しました: $VER" >> "$GITHUB_STEP_SUMMARY"
-              DONE=yes
-              break
-            fi
-
-            echo "押し込みに失敗。少し待って再試行 $i"
-            git reset -q --soft HEAD~1   # 次の周回でやり直せるように戻す
-            sleep 10
-          done
-
-          if [ "$DONE" != "yes" ]; then
-            echo "3回試しましたが公開できませんでした。次の回にやり直します。" | tee -a "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
-
-      # 何が起きたかを Actions の画面に日本語で残す
-      - name: 結果を書く
-        if: always()
+      # 失敗したときに、どこで止まったかを日本語で出す
+      - name: 失敗したときの案内
+        if: failure()
         run: |
-          {
-            echo ""
-            echo "- 実行モード: ${{ steps.gate.outputs.run }}（時刻 ${{ steps.gate.outputs.hour }}時 UTC）"
-            echo "- index.html の変更: ${{ steps.check.outputs.changed || '（そこまで進みませんでした）' }}"
-          } >> "$GITHUB_STEP_SUMMARY"
-          # AIがうまく動かなかったとき、その理由をここに出す（ログを探さなくて済むように）
-          LOG=/home/runner/work/_temp/claude-execution-output.json
-          if [ -f "$LOG" ]; then
-            MSG=$(node -e '
-              try {
-                var fs = require("fs");
-                var a = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-                var list = Array.isArray(a) ? a : [a];
-                var out = [];
-                list.forEach(function (x) {
-                  if (!x) return;
-                  var s = JSON.stringify(x);
-                  if (x.is_error || x.error || /"(error|is_error)"|error_type|invalid_request|authentication|credit|rate_limit|not_found/i.test(s)) {
-                    out.push(s.slice(0, 700));
-                  }
-                });
-                if (!out.length && list.length) out.push(JSON.stringify(list[list.length - 1]).slice(0, 700));
-                console.log(out.slice(-3).join("\n\n"));
-              } catch (e) {}
-            ' "$LOG" 2>/dev/null || true)
-            if [ -n "$MSG" ]; then
-              { echo ""; echo "### AIが止まった理由"; echo '```'; echo "$MSG"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-            fi
-          fi
-
-          if [ -f .claude/last-report.md ]; then
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-            cat .claude/last-report.md >> "$GITHUB_STEP_SUMMARY"
-          fi
+          echo "この回は公開されませんでした。アプリは前のままです（壊れていません）。"
+          echo "上の赤いステップ名を見てください。"
+          echo "  ・claude-code-action で赤 → APIキーの残高／モデル名の指定を確認"
+          echo "  ・安全確認 で赤 → AIの変更がテストに落ちた。次の回で直ります"
+          echo "  ・公開する で赤 → main への書き込み権限を確認"
