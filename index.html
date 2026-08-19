@@ -561,7 +561,7 @@ a{color:var(--teal)}
 /* =========================================================================
    STORIA — 単一HTML / localStorage / ルールベースAI (デモ)
    ========================================================================= */
-const APP_VER='2026.08.11-36';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
+const APP_VER='2026.08.19';   /* 更新のたびにここを変えてください（利用者に「更新されました」と表示されます） */
 const LS_BASE='aoCompass_v1';
 const LS_SCOPE_KEY='aoCompass_scope';
 /* ログイン中のデータは、アカウントごとの引き出しに入れます。
@@ -3063,7 +3063,9 @@ function openDocEditor(id,tab){
       const row=el('div','btn-row'); row.style.marginTop='10px';
       const imp=el('button','btn sm teal','📎 ファイルを読み込む（PDF/Word/パワポ）'); imp.onclick=()=>pickFile('.pdf,.docx,.pptx,.txt,.md,.csv',(text,meta)=>{ ta.value = ta.value.trim() ? (ta.value.trim()+'\n\n'+text) : text; updateCnt(); d.body=ta.value; d.sourceFile=meta.name||d.sourceFile; touchDoc(d); toast('「'+(meta.name||'ファイル')+'」を読み込みました','ok'); });
       const saveV=el('button','btn sm','この内容をバージョン保存'); saveV.onclick=()=>{ d.body=ta.value; d.versions=d.versions||[]; d.versions.unshift({ts:Date.now(),body:ta.value}); touchDoc(d); toast('バージョンを保存しました','ok'); };
-      const dup=el('button','btn sm ghost','この下書きを複製'); dup.onclick=()=>{ const c={...d,id:uid(),title:d.title+'（複製）',versions:[],feedbacks:(d.feedbacks||[]).map(x=>({...x})),updatedAt:Date.now(),body:ta.value}; S.documents.push(c); save(); toast('複製しました','ok'); closeSheet(); go('documents'); };
+      const dup=el('button','btn sm ghost','この下書きを複製'); /* オブジェクトスプレッドは古いiOS Safariで構文エラーになり、
+         アプリ全体が真っ白になるので Object.assign を使います。中身は同じです。 */
+      dup.onclick=()=>{ const c=Object.assign({},d,{id:uid(),title:d.title+'（複製）',versions:[],feedbacks:(d.feedbacks||[]).map(x=>Object.assign({},x)),updatedAt:Date.now(),body:ta.value}); S.documents.push(c); save(); toast('複製しました','ok'); closeSheet(); go('documents'); };
       const delD=el('button','btn sm danger','この書類を削除'); delD.onclick=()=>deleteDoc(d.id,()=>{ try{ closeSheet(); }catch(e){} });
       row.append(imp,saveV,dup,delD); pane.appendChild(row);
       const nb=fieldText('メモ（段落メモ・自分用）',d.notes,null,{area:true,rows:2}); nb.querySelector('textarea').onchange=e=>{d.notes=e.target.value;touchDoc(d);}; pane.appendChild(nb);
@@ -3901,7 +3903,9 @@ function sheetData(){
     const exp=el('button','btn','バックアップを書き出す'); exp.onclick=()=>{ exportData(); };
     const imp=el('button','btn ghost','読み込む'); imp.onclick=()=>{ importData(); };
     row.append(exp,imp); b.appendChild(row);
-    b.appendChild(el('p','xsmall muted','※ バックアップに、鍵などの秘密の情報は含まれません（安全のため）。'));
+    b.appendChild(el('p','xsmall muted','※ ファイル名には書き出した日付と時刻が入ります（例：ao-compass-backup-2026-08-19-0730.json）。何回書き出しても上書きされないので、いちばん新しいものがすぐ分かります。'));
+    b.appendChild(el('p','xsmall muted','※ 「読み込む」を押すと、いまのデータと読み込むファイルの中身を並べた確認画面が出ます。そこで押すまで、いまのデータは変わりません。'));
+    b.appendChild(el('p','xsmall muted','※ バックアップに、鍵などの秘密の情報は含まれません（安全のため）。APIキーは含まれません。'));
 
     const mg=el('div','card tight'); mg.style.marginTop='12px';
     mg.innerHTML='<div class="small"><b>スマホを買い替えるとき</b></div>'
@@ -3911,8 +3915,29 @@ function sheetData(){
 
     b.appendChild(el('hr','sep'));
     const del=el('button','btn danger block','すべてのデータを削除');
-    del.onclick=()=>{ close(); confirmDelete('すべてのデータ（志望校・書類・自己分析など）を完全に削除します。取り消せません。',()=>{S=blankState();S.profile.onboarded=true;save();toast('削除しました','ok');go('home');}); };
+    /* 取り消せない操作なので、何が消えるのかを件数で見せ、その場で書き出せるようにしています */
+    del.onclick=()=>{ close(); confirmWipe(); };
     b.appendChild(del);
+  });
+}
+/* すべて削除の確認。消えるものを件数で見せ、その場でバックアップも取れるようにします。 */
+function confirmWipe(){
+  openSheet('すべてのデータを削除',(b,close)=>{
+    b.appendChild(el('div','note','<b>この端末に入っているデータをすべて消します。</b>志望校・書類・自己分析・タスクなど、すべてです。取り消せません。'));
+    const cc=el('div','card tight'); cc.style.marginTop='8px';
+    cc.innerHTML='<div class="small"><b>いま消えるもの</b></div>'
+      +'<div class="xsmall muted" style="margin-top:4px">'+esc(backupCounts(S))+'</div>';
+    b.appendChild(cc);
+    if(!isEmptyState(S)){
+      const pre=el('button','btn ghost block','先に今のデータを書き出す'); pre.style.marginTop='10px';
+      pre.onclick=()=>{ exportData(); };   /* 書き出してもシートは開いたまま */
+      b.appendChild(pre);
+    }
+    const row=el('div','btn-row'); row.style.marginTop='8px';
+    const cn=el('button','btn','キャンセル'); cn.onclick=close;
+    const d=el('button','btn danger','削除する');
+    d.onclick=()=>{ close(); S=blankState(); S.profile.onboarded=true; save(); toast('削除しました','ok'); go('home'); };
+    row.append(cn,d); b.appendChild(row);
   });
 }
 function sheetContact(){
@@ -4014,10 +4039,11 @@ function vSettings(){
   /* --- 困ったとき --- */
   w.appendChild(setGroup('困ったとき'));
   w.appendChild(setRow(ico('mail',22),'お問い合わせ','support@storiaai.jp に送れます',null,sheetContact));
-  w.appendChild(setRow(ico('disk',22),'データ','バックアップ／読み込み／削除',null,sheetData));
+  w.appendChild(setRow(ico('disk',22),'データ','バックアップの書き出し／読み込み／すべて削除',null,sheetData));
   w.appendChild(setRow(ico('info',22),'このアプリについて','バージョン '+APP_VER+'／利用規約',null,sheetAbout));
 
   w.appendChild(privacyNote());
+  w.appendChild(el('p','xsmall muted','※ バックアップのファイルにAPIキーは含まれません。読み込むときは、いまのデータと読み込む中身を並べた確認画面が出てから置きかわります。'));
   return w;
 }
 
@@ -4090,8 +4116,106 @@ function vMore(){
   const about=el('div','card tight'); about.innerHTML='<p class="xsmall muted">STORIA（試作版）｜総合型選抜の伴走アプリ。AIは合否を判断せず、あなたの経験や実績を捏造しません。最終的な提出内容は必ずご自身で確認し、先生・指導者にも確認してもらいましょう。デモの大学名・要項はすべて架空です。</p>'; w.appendChild(about);
   return w;
 }
-function exportData(){ const blob=new Blob([JSON.stringify(S,null,2)],{type:'application/json'}); const a=el('a'); a.href=URL.createObjectURL(blob); a.download='ao-compass-backup.json'; a.click(); toast('バックアップを書き出しました','ok'); }
-function importData(){ const inp=el('input'); inp.type='file'; inp.accept='.json'; inp.onchange=e=>{ const file=e.target.files[0]; if(!file)return; const rd=new FileReader(); rd.onload=()=>{ try{ S=migrate(JSON.parse(rd.result)); save(); toast('読み込みました','ok'); go('home'); }catch(err){ toast('ファイルを読み込めませんでした','err'); } }; rd.readAsText(file); }; inp.click(); }
+/* ---- バックアップの書き出し・読み込み ----
+   読み込みは「いまのデータを丸ごと置きかえる」操作なので、
+   ①ちゃんとしたバックアップか確かめる ②中身を見せて確認してもらう
+   の2段構えにしています。取り違えた1回で全部消える、ということが起きないように。 */
+const BK_LABELS=[['schools','志望校'],['documents','書類'],['activities','活動実績'],['tasks','タスク'],
+                 ['essays','小論文'],['interview','面接'],['certs','資格・検定'],['feedback','フィードバック']];
+/* STORIA のバックアップらしいか。関係ないJSONで上書きしてしまわないための門番。 */
+function looksLikeBackup(o){
+  if(!o||typeof o!=='object'||Array.isArray(o)) return false;
+  for(let i=0;i<BK_LABELS.length;i++){ if(Array.isArray(o[BK_LABELS[i][0]])) return true; }
+  const objKey=k=>o[k]&&typeof o[k]==='object'&&!Array.isArray(o[k]);
+  return !!(objKey('profile')||objKey('self')||objKey('story'));
+}
+/* 中身の内訳を日本語1行に。確認シートで「今のデータ」と「読み込むデータ」を並べて見せます。 */
+function backupCounts(o){
+  if(!o||typeof o!=='object'||Array.isArray(o)) return 'まだ何も入っていません';
+  const parts=[];
+  BK_LABELS.forEach(function(pair){ const a=o[pair[0]]; if(Array.isArray(a)&&a.length) parts.push(pair[1]+' '+a.length+'件'); });
+  const nm=(o.profile&&typeof o.profile==='object'&&!Array.isArray(o.profile))?String(o.profile.name||'').trim():'';
+  if(nm) parts.push('プロフィール（'+nm+'）');
+  return parts.length?parts.join('／'):'まだ何も入っていません';
+}
+function bkStamp(d){ const p=n=>(n<10?'0':'')+n;
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'-'+p(d.getHours())+p(d.getMinutes()); }
+function fmtBackupAt(iso){
+  if(!iso) return '記録なし';
+  const d=new Date(iso); if(isNaN(d.getTime())) return '記録なし';
+  const p=n=>(n<10?'0':'')+n;
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes());
+}
+/* 書き出したファイルに付けた目印（_backupAt / _backupVer）は、読み込むときに取り除きます。 */
+function stripBackupMarks(o){
+  const out={}; Object.keys(o||{}).forEach(function(k){ if(k!=='_backupAt'&&k!=='_backupVer') out[k]=o[k]; });
+  return out;
+}
+function exportData(){
+  const now=new Date();
+  /* AICFG（APIキー）は S の外にあるので、ここには入りません */
+  const out=Object.assign({},S,{_backupAt:now.toISOString(),_backupVer:APP_VER});
+  const blob=new Blob([JSON.stringify(out,null,2)],{type:'application/json'});
+  const a=el('a'); a.href=URL.createObjectURL(blob);
+  a.download='ao-compass-backup-'+bkStamp(now)+'.json';
+  a.click(); toast('バックアップを書き出しました','ok');
+}
+function importData(){
+  const inp=el('input'); inp.type='file'; inp.accept='.json,application/json';
+  inp.onchange=e=>{
+    const file=e.target.files&&e.target.files[0]; if(!file) return;
+    const rd=new FileReader();
+    rd.onload=()=>{
+      let obj=null;
+      try{ obj=JSON.parse(rd.result); }
+      catch(err){ toast('このファイルは読み込めませんでした（壊れているようです）','err'); return; }
+      if(!looksLikeBackup(obj)){ toast('STORIA のバックアップではないようです。書き出したファイルを選んでください','err'); return; }
+      confirmImport(obj,file.name);
+    };
+    rd.onerror=()=>toast('このファイルは読み込めませんでした','err');
+    rd.readAsText(file);
+  };
+  inp.click();
+}
+/* 読み込みの確認シート。ここを通るまで S には一切触りません。 */
+function confirmImport(obj,fname){
+  const emptyNow=isEmptyState(S);
+  openSheet('バックアップの読み込み',(b,close)=>{
+    b.appendChild(el('p','xsmall muted','選んだファイル：'+esc(fname||'（名前なし）')));
+
+    const c1=el('div','card tight'); c1.style.marginTop='8px';
+    c1.innerHTML='<div class="small"><b>いまこの端末に入っているデータ</b></div>'
+      +'<div class="xsmall muted" style="margin-top:4px">'+esc(backupCounts(S))+'</div>';
+    b.appendChild(c1);
+
+    const c2=el('div','card tight'); c2.style.marginTop='8px';
+    c2.innerHTML='<div class="small"><b>読み込むファイルの中身</b></div>'
+      +'<div class="xsmall muted" style="margin-top:4px">'+esc(backupCounts(obj))+'</div>'
+      +'<div class="xsmall muted" style="margin-top:4px">書き出した日時：'+esc(fmtBackupAt(obj._backupAt))
+      +(obj._backupVer?'／バージョン '+esc(obj._backupVer):'')+'</div>';
+    b.appendChild(c2);
+
+    const note=el('div',emptyNow?'note info':'note'); note.style.marginTop='10px';
+    note.innerHTML=emptyNow
+      ? 'いまこの端末にはまだデータが入っていません。<b>そのまま読み込んで大丈夫です。</b>'
+      : 'いまこの端末のデータは、<b>ファイルの中身にすべて置きかわります。</b>あとから元に戻すことはできません。<br>心配なときは、下の「先に今のデータを書き出す」を押してからにしてください。';
+    b.appendChild(note);
+
+    if(!emptyNow){
+      const pre=el('button','btn ghost block','先に今のデータを書き出す'); pre.style.marginTop='10px';
+      pre.onclick=()=>{ exportData(); };   /* シートは開いたまま。書き出してから判断できます */
+      b.appendChild(pre);
+    }
+
+    const row=el('div','btn-row'); row.style.marginTop='8px';
+    const cn=el('button','btn','キャンセル'); cn.onclick=close;
+    const yes=el('button','btn '+(emptyNow?'primary':'danger'),emptyNow?'読み込む':'置きかえて読み込む');
+    yes.onclick=()=>{
+      S=migrate(stripBackupMarks(obj)); save(); close(); toast('読み込みました','ok'); go('home');
+    };
+    row.append(cn,yes); b.appendChild(row);
+  });
+}
 
 /* =========================================================================
    自己分析ワーク
