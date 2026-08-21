@@ -5,9 +5,7 @@
 name: AO Compass 自動改善
 
 on:
-  schedule:
-    - cron: "51 * * * *"
-  workflow_dispatch:
+   workflow_dispatch:
 
 permissions:
   contents: write
